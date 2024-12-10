@@ -1,0 +1,551 @@
+#! /usr/bin/perl 
+#-*-Perl-*-
+#
+# monthly_2A-52
+#
+#     Process 2A-52 product for monthly data set. It will call '2A-52i' to 
+#     process each file (rain rate granule -- HDF) from a monthly data
+#     set on disk.  The results of each execution of '2A-52i' will be appended 
+#     to the same file. The rain existence info. in this file will be 
+#     sorted based on 'time of VOS'.  The 2A-52 product's filename will be 
+#     created based on the date (first vos' date) of the monthly data set.
+#
+#     This program will exit if processing of any granule file failed.
+#     This program uses '2A-53-v4' product as input by default.
+#
+#     Exit code: 
+#         -2 -- ($INTER_CODE)Program was aborted by '^C'. No product produced.
+#         -1 -- ($ERROR_CODE) When there is failure and no product produced.
+#          0 -- ($SUCCESS_CODE)Everything is successful.
+#
+#
+#-----------------------------------------------------------------------------
+#
+#     Thuy T. Nguyen
+#     NASA/TRMM Office
+#     Thuy.Nguyen@gsfc.nasa.gov
+#     June 12, 1997
+#
+#############################################################################
+#
+
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'all_tape_common.pl';    # initialization
+
+# Set default
+@option_list = ();
+$verbose = 0;
+$output_dir = $save_curr_dir;
+$working_dir = $save_curr_dir;
+$tapeid = "";
+$top_input_dir = "";
+$curr_jobnum = 0;
+$curr_file = "";
+
+$selected_2A53 = "2A-53-v4";        #Default input product
+
+$not_report_monitorps = 0;  # Default: yes, send to monitorps.
+$update_inventory_db = 0;   # Not send information to 'gvi_db'.
+$prod_processed_num = 1;  # Default.  Number of time this product is being 
+                          # processed--or num of reprocessed.
+$version_fname = "$gvs_data_path/products_version_numbers";  # Default
+
+# process arguments
+do process_argvs();
+$prod = "2A-52i";
+@active_prods_list = ($prod);
+@options_list{$prod} = join(' ', @option_list);
+
+chdir $working_dir if ($working_dir ne "");
+$jobnum = 0;
+$site_name = "";
+$file_flag = "";
+# process product
+print STDERR "$this_prog: Processing monthly...\n" if ($verbose);
+$rc = do process_monthly_product();
+
+if ($rc < 0) {
+	if ($verbose) {
+		print STDERR "$this_prog: Failed.\n";
+	}
+	$rc = $ERROR_CODE;
+}
+else {
+	if ($verbose) {
+		print STDERR "$this_prog: Successful.\n";
+	}
+	$rc = $SUCCESS_CODE;
+}
+if ($jobnum > 0) { # finished
+	do set_products_status(*products_status, $stat_array[4], ($prod));
+	do send_status_msg($jobnum+1, $program, "NOFILE", $stat_array[4]);
+}
+do clean_up();
+chdir $save_curr_dir;
+
+exit($rc);
+
+################################## Routines###################################
+
+sub usage {
+	print STDERR "Usage ($PROG_VERSION)\n";
+	print STDERR "  $this_prog [-v] [-o output_dir] [-w working_dir] \n",
+	             "\t[-p 2A-53-product]\n",
+	             "\t[-versions_file filename] [-not_report_monitorps]\n",
+#                 "\t[-update_inventory_db [-product_processed_num num] ]\n",
+	             "\ttop_input_dir tapeid program prog_options\n";
+	print STDERR "  where,\n",
+	             "\t-v: Show program execution steps.\n",
+	             "\t-o: Specify output directory. Default: './'.\n",
+	             "\t-w: Specify working directory. Default: './'.\n",
+	             "\t-p: Specify rain rate product to be used as input. Available \n",
+	             "\t    values: 2A-53-{c|d|w|v4}. Default: 2A-53-v4.\n";
+	print STDERR "\t-versions_file:\n",
+                 "\t    Specify filename that contains TSDIS products' version numbers.  \n",
+	             "\t    Default = \$GVS_DATA_PATH/products_version_numbers\n";
+
+	print STDERR "\t-not_report_monitorps:\n",
+	             "\t    Do not send status messages to monitorps.\n";
+#	print STDERR "\t-update_inventory_db:\n",
+#	             "\t    Yes, add information (product, files,...) to the inventory DB.\n",
+#	             "\t    Inventory info. may be looked up via a GUI program, 'xgvics'.\n";
+#	print STDERR "\t-product_processed_num:\n",
+#	             "\t    Specify the number for reprocesses. Default: 1.\n",
+#	             "\t    This is used if -update_inventory_db was specified.\n";
+	print STDERR
+	             "\ttop_input_dir: Top input directory name.  This directory\n",
+	             "\t    should be organized as illustrated below:\n",
+	             "\t                        | <daily_1> --> gvs_<2A-53>-<tapeid> --> HDF file(s)\n",
+	             "\t    <top_input_dir> --> | <daily_2> --> gvs_<2A-53>-<tapeid> --> HDF file(s)\n",
+	             "\t                            ...\n",
+	             "\t                        | <daily_N> --> gvs_<2A-53>-<tapeid> --> HDF file(s)\n",
+	             "\t    HDF file(s) must follow TSDIS file naming convention. \n",
+	             "\t    Files are allowed to be compressed.\n",
+	             "\ttapeid       : Specify tapeid of the monthly data set.\n",
+	             "\tprogram      : 2A-52i (Rain existence program)\n",
+             	 "\tprog_options : Options for program.\n",
+	             "  Note: The output filename is 2A52.yymmdd.Site.TSDIS_prod#\n";
+
+	print STDERR "\n";
+	exit($ERROR_CODE);
+}
+
+sub process_argvs {
+
+	do usage() if ($#ARGV < 1);
+	local($str) = "";
+	while (@ARGV) {
+		$str = shift @ARGV;
+		if ($str =~ /^\-/) {
+			# Options
+			if ($str eq "-v") {
+				$verbose = 1;
+			}
+			elsif ($str eq "-o") {
+				$output_dir = shift @ARGV;
+				do usage() if ($output_dir =~ /^-/);
+				$output_dir = &change2absolute_dir($output_dir);
+			}
+			elsif ($str eq "-w") {
+				$working_dir = shift @ARGV;
+				do usage() if ($working_dir =~ /^-/);
+				$working_dir = &change2absolute_dir($working_dir);
+			}
+			elsif ($str eq "-versions_file") {
+				local($tmp_str) = shift @ARGV;
+				do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+				# Turn it to absolute path and remove the last '/'.
+				($version_fname = &change2absolute_dir($tmp_str)) =~ s/\/$//;
+			}
+			elsif ($str eq "-update_inventory_db") {
+				$update_inventory_db = 1;
+			}
+			elsif ($str eq "-product_processed_num") {
+				local($tmp_str) = shift @ARGV;
+				do usage() if ($tmp_str =~ /^\-/);
+				$prod_processed_num = $tmp_str;
+			}
+			elsif ($str eq "-not_report_monitorps") {
+				$not_report_monitorps = 1;
+			}
+			elsif ($str eq "-p") {
+				$selected_2A53 = shift @ARGV;
+				if ($selected_2A53 ne "2A-53-c" &&
+					$selected_2A53 ne "2A-53-d" &&
+					$selected_2A53 ne "2A-53-w" &&
+					$selected_2A53 ne "2A-53-v4") {
+					print STDERR "$this_prog: The selected 2A-53 product is invalid.\n";
+					exit(-1);
+				}
+			}
+		} 
+		else {
+			last;
+		}
+	}
+	do usage if ($str eq "");
+	$top_input_dir = &change2absolute_dir($str);       # top input dir
+	$str = shift @ARGV;
+	do usage if ($str eq "");
+	$tapeid = $str;              # tapeid
+
+	$str = shift @ARGV;
+	do usage if ($str eq "");
+	$program = $str;             # Program
+	@option_list = @ARGV;        # program's options
+			
+} # process_argvs
+
+
+sub process_monthly_product {
+	# Return 1 for successful; -1, otherwise.
+	# 
+	# Produce a product file: 2A52.yymmdd.Site.TSDIS_prod#
+	# which contains a month worth of rain existence data sorted in the
+	# order of VOS time.
+	# yymmdd in the file name is the date stamp of the first VOS in 
+    # the product.
+    #
+	# The structure of top input dir:
+    #    daily_dir1          daily_dir2    ...       daily_dirN
+	#        |                   |                       |
+	#   gvs_<2A-53>_<tapeid> gvs_<2A-53>_<tapeid>    gvs_<2A-53>_<tapeid>
+	#       /|\                 /|\                     /|\
+	#    HDF file(s)          HDF file(s)            HDF file(s)
+	#
+	# where: HDF file(s) have the following naming convention:
+	#          2A53.yymmdd.granule#.Site.TSDIS_prod#.HDF[.gz|.Z]
+	#
+	
+	if ($top_input_dir eq "") {
+		if (verbose) {
+			print STDERR "$this_prog: top_input_dir is not specified.\n";
+		}
+		return -1;
+	}
+
+	# Open top dir
+	opendir(THISDIR, $top_input_dir) || (print STDERR "$this_prog: Fail to open dir: $top_input_dir\n" && return -1);
+	local(@subdirs) = grep(!/^\.\.?$/, readdir(THISDIR));
+	closedir(THISDIR);
+	if ($#subdirs < 0) {
+		if (verbose) {
+			print  STDERR "$this_prog: $top_input_dir contains no sub dir.\n";
+		}
+		return -1;
+	}
+	
+	$tmp_outfile = "$working_dir/re_$$.ASCII";   # tmp file
+	while (@subdirs) {
+		local($daily_dir) = shift(@subdirs);
+		$daily_dir = "$top_input_dir/$daily_dir";
+		next if (!(-d $daily_dir));
+	    print STDERR "$this_prog: Processing $daily_dir...\n" if ($verbose);
+		local($rc) = do process_4_daily($daily_dir, $tmp_outfile);
+		if ($rc < 0) {
+			if ($verbose) {
+				print STDERR "$this_prog: Failed to process data for <$daily_dir>\n";
+			}
+			return -1;
+		}
+	}
+	
+	# Sort the product based on VOS time. Outfile name should
+	# follow this format: 2A52.yymmdd.Site.TSDIS_prod#
+	print STDERR "$this_prog: Sorting product...\n" if ($verbose);
+	local($outfile) = do sort_product_file($tmp_outfile);
+	if ($verbose) {
+		print STDERR "$this_prog: Produced <$outfile>.\n";
+	}
+	unlink $tmp_outfile;
+	return 1;
+} # process_monthly_product
+
+
+sub process_4_daily {
+	local($daily_dir, $prod_fname) = @_;
+
+	# Process each granule from a day.
+	# The structure of daily_dir:
+    # 
+	#    daily_dir  ---> gvs_<2A-53>_<tapeid> --> HDF file(s)
+	# daily_dir may contain no HDF file.
+	#
+	# Return 1 for successful
+	#        2 for not successful due to no HDF file
+	#        -1 for failure.
+
+	return 2 if ($daily_dir eq "");
+	return -1 if ($prod_fname eq "");
+	local($rrmap_dir) = &get_dir_name($selected_2A53, $tapeid);
+	return -1 if ($rrmap_dir eq "");
+	local($dir) = "$daily_dir/$rrmap_dir";
+	print STDERR "$this_prog: Will process in $dir...\n" if ($verbose);
+	opendir(THISDIR, $dir) || return 2;
+	
+	# only want 2A53's HDF files.  Compressed files are allowed.
+	local(@rrmap_granule_files) =  grep(/2A53.+\.HDF.*/, readdir(THISDIR));
+	closedir(THISDIR);
+	if ($#rrmap_granule_files < 0) {
+		if (verbose) {
+			print  STDERR "$this_prog: Dir <$dir> contains no rrmap.\n";
+		}
+		return 2;
+	}
+	
+	# process each granule file 
+	while (@rrmap_granule_files) {
+		local($rrmap_file) = shift @rrmap_granule_files;
+	    local($compressed_rrmap) = 0;
+		$rrmap_file = "$dir/$rrmap_file";   # fullpath
+		# Uncompress file if is required
+		if ($rrmap_file =~ /(\.gz$)|(\.Z$)/) {
+			$compressed_rrmap = 1;
+			local($new_rrmap_file) = $rrmap_file;
+			do uncompress_file_to_current_dir($rrmap_file, *new_rrmap_file);
+			$rrmap_file = $new_rrmap_file;
+		}
+
+		next if ($rrmap_file !~ /\.HDF$/);  # skip if not rrmap HDF file
+
+		$site_name = &get_site_name_from_filename($rrmap_file) 
+							 if $site_name eq "";
+
+		# Process rrmap granule HDF file only
+		$jobnum++;
+
+	    print STDERR "$this_prog: Processing $rrmap_file...\n" if ($verbose);
+		local($rc) = do process_4_granule($rrmap_file, $prod_fname);
+		if ($rc < 0) {
+			if ($verbose) {
+				print STDERR "$this_prog: Failed to process <$rrmap_file>.\n";
+			}
+			return -1;
+		}
+        # Remove tmp rrmap file
+		unlink $rrmap_file if ($compressed_rrmap == 1);
+
+
+	}
+	return 1;
+} # process_4_daily
+
+
+sub process_4_granule {
+	local($rrmap_file, $prod_file) = @_;
+	# Return -1 for failure; 1, for successful.
+	# Call '2A-52i' to process rain existence product for the given rrmap_file.
+	#
+	# $prod_fname will be appended with new rain existence data for this
+	# granule file ($rmap_file).
+
+	return -1 if ($rrmap_file eq "" || !(-e $rrmap_file) || $prod_fname eq "");
+
+
+	$curr_jobnum = $jobnum;
+	$curr_file = $rrmap_file;
+	if ($file_flag eq "") {
+		$file_flag = "BEGIN";
+	}
+	elsif ($file_flag eq "BEGIN") {
+		$file_flag = "MIDDLE";
+	}
+	do set_products_status(*products_status, $stat_array[3], ($prod));
+	do send_status_msg($jobnum, $program, $rrmap_file, $stat_array[3]); # running
+	local($cmd) = "$program @option_list $rrmap_file $prod_file $file_flag";
+	if ($verbose) {
+		print STDERR "$this_prog: Executing ... $cmd\n";
+	}
+	local($rc) = do do_system_call($cmd, $rrmap_file);
+	do set_products_status(*products_status, $stat_array[$rc], ($prod));
+	do send_status_msg($jobnum, $program, $rrmap_file, $stat_array[$rc]);
+	# Reset
+	$curr_jobnum = "";
+	$curr_file = "";
+	
+	return -1 if ($rc == 0);
+	return 1;
+}  #process_4_granule
+
+
+
+sub do_system_call {
+	local($cmd) = @_;
+	# Return code is is the index to @stat_array defined 
+	# in 'gvs_production_common.pl':
+	#        0 for failure
+	#        1 for successful
+	#        5 for interrupted.
+	#     
+
+#print STDERR "executing: $cmd\n";
+	system($cmd);
+	$status = $? >> 8;
+	local($signal) = $? & 255;
+	local($rc) = 1;
+
+	do doexit_handler($signal) if ($signal != 0);
+	if (&interrupted($status)) {
+		$rc = 5;
+		do doexit_handler('INT'); # this will exit
+	}
+	if (&is_severe_error($status)) {
+		print STDERR "$this_prog: Failed executing: $cmd\n";
+		$rc = 0; # failed
+	}
+	return $rc;
+}
+
+sub clean_up {
+	if ($update_inventory_db) {
+		# Send info of each file for all products to GV inventory DB.
+		do send_product_info_to_inventory($tapeid, *active_prods_list, *options_list,
+								  $prod_processed_num, *products_status,
+								  "");
+	}
+	unlink $tmp_outfile if (-e $tmp_outfile);
+}
+
+sub doexit_handler {
+	# This routine is called when interrupt signal occurred.
+	# Cleanup and exit.
+	
+	local($signal) = @_;
+    # Ignore signals
+	do ignore_catched_signals();
+	local($exit_code) = $SEVERE_ERROR_CODE;
+	local($rc) = 0;   # failure
+
+	# Restore STDERR and STDOUT.  This is required since both stderr and stdout
+    # might have been redirected by the calling program
+	do restore_tty();
+
+	$| = 1;
+
+
+	# interrupted (aborted)
+	if ($signal eq 'KILL' || $signal eq 'STOP' || $signal eq 'INT' ||
+		$signal == 9 || $signal == 2) {
+		$rc = 5;
+		$exit_code = $INTER_CODE;
+	}
+	if ($first_time_exit_handler) {
+		$first_time_exit_handler = 0;
+		print STDERR "$this_prog: Got signal <$signal>. Stop execution. \n";
+		if ($curr_file ne "") {
+			do set_products_status(*products_status, $stat_array[$rc], ($prod));
+			do send_status_msg($curr_jobnum, $program, $curr_file, $stat_array[$rc]);
+		}
+		do set_products_status(*products_status, $stat_array[4], ($prod));
+		do send_status_msg(++$curr_jobnum, $program, "NOFILE", $stat_array[4]); # finished
+
+		do clean_up();
+		chdir $save_curr_dir;
+	}
+	exit($exit_code);
+} #doexit_handler 
+
+
+sub sort_product_file {
+	local($pfile) = @_;
+	# Sort the rain existence in pfile based on VOS time. 
+    # Return Outfile name which follows this format: 
+	#    2A52.yymmdd.Site.TSDIS_prod#
+	# Return "" if failed to sort or pfile doesnot exist.
+	
+	# Read the data from pfile, sort it based on vos' time, 
+	# use the date of the first entry to create outfile name,
+    # write the header info (the first few lines) from pfile and 
+	# the sorted entries to outfile.
+	return "" if ($pfile eq "" || !(-e $pfile));
+	open(PFILE, "< $pfile") || return "";
+	local(@lines) = <PFILE>;
+	close(PFILE);
+	while (@lines) {
+		# Save header lines
+		# rain existence data line starts with yyyy-mm-dd
+		local($line) = shift @lines;
+		if ($line !~ /^[0-9]+.+/) {
+			# header
+			push(@header_info_lines, $line);
+			next;
+		}
+		
+		# Put the rain entry back in list, so lines contains only
+		# rain existence.
+		unshift(@lines, $line);
+		last;
+	}
+	if ($#lines < 0) {
+		if (verbose) {
+			print STDERR "$this_prog: There is no rain existence in file <$pfile>\n";
+		}
+		return "";
+	}
+
+	# sort @lines
+	@lines = sort(@lines);
+	
+	# Create outfile name and write data to it.
+	local($outfile) = &create_prod_filename($lines[0]);
+   
+	open(OFILE, "> $outfile") || return "";
+	while(@header_info_lines) {
+		local($line) = shift @header_info_lines;
+		print OFILE "$line";
+	}
+	while (@lines) {
+		local($line) = shift @lines;
+		print OFILE "$line";
+	}
+	close(OFILE);
+	return $outfile;
+} # sort_product_file
+
+
+sub create_prod_filename {
+	local($re_line) = @_;
+
+	# Return filename for 2A-52: 2A52.yymmdd.site.tsdis_prod#.
+	#   where yymmdd is from $re_line
+	#   $re_line format: yyyy-mm-dd hh:mm:ss.sss .+
+	#
+	return "" if ($re_line eq "");
+	return "" if ($site_name eq "");
+	local(@line_items) = split(/ /, $re_line);
+	return "" if ($#line_items < 0);
+	local(@date_items) = split(/-/, $line_items[0]);
+	if ($#date_items < 2) {
+		if (verbose) {
+			print STDERR "$this_prog: Rain existence line format is corrupted.\n";
+		}
+		return "";
+	}
+	local($yr) = $date_items[0] - 1900;
+	local($prod_version_num) = &get_prod_version_num($prod, $out);
+	local($fname) = "$output_dir/2A52.$yr$date_items[1]$date_items[2].$site_name.$prod_version_num";
+
+	return $fname;
+	
+} #create_prod_filename
+
+
+sub get_site_name_from_filename {
+	local($fname) = @_;
+	# Extract site name from 2A-53 product's filename and return it. 
+	# filename:  4char-prod_name.yymmdd.granule#.site.tsdis_prod#.HDF*
+	
+	return "" if ($fname eq "");
+	local(@fname_items) = split(/\./, $fname);
+	if ($#fname_items >= 5) {
+		return $fname_items[3];
+	}
+	return "";
+}  #get_site_name_from_filename
+
+
+
+
+
+
+

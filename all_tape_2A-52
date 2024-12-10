@@ -1,0 +1,406 @@
+#! /usr/bin/perl
+#-*-perl-*-
+#
+#
+# all_tape_2A-52
+#     Automates the execution of 2A-52i in GVS for the whole data set 
+#     from any site residing on disk.
+#
+#
+# Exit code: 
+#             -2 -- ($INTER_CODE)Program was aborted by '^C'.
+#             -1 -- ($ERROR_CODE) When there is failure.
+#              0 -- ($SUCCESS_CODE)Everything is successful.
+#              2 -- ($OUT_OF_SPACE_CODE) There is not enough space to continue.
+#
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# By: Ngoc-Thuy Nguyen
+#     Science Systems and Applications, Inc. (SSAI)
+#     NASA/TRMM Office
+#     nguyen@trmm.gsfc.nasa.gov
+#     October 28, 1997
+#
+#     Copyright 1997-1998
+#
+##############################################################################
+
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'all_tape_common.pl';
+
+@save_prog_cmd = @ARGV;
+$yes_send_mail = 1;        # Send mail to the summiter when exit.
+# Set default
+$top_input_dir = $save_curr_dir;
+$top_output_dir = $save_curr_dir;
+$tape_id = "unknown";
+$device  = "disk";
+$p2A53 = "2A-53-v4";       # Default 2A-53 product
+$remove_old_product = 0;
+$program = "2A-52i";       # Default
+$prod = "2A-52i";
+
+$not_report_monitorps = 0;  # Default: yes, send to monitorps.
+$update_inventory_db = 0;   # Not send information to 'gvi_db'.
+$prod_processed_num = 1;  # Default.  Number of time this product is being 
+                          # processed--or num of reprocessed.
+
+$version_fname = "$gvs_data_path/products_version_numbers";  # Default
+
+do process_argvs(@ARGV);
+
+
+$this_prog_dir = "all_tape_2a52_$$/";
+$tmp_dir = "/tmp/$this_prog_dir";
+$input_dir = $top_input_dir.&get_dir_name($p2A53, $tape_id);
+$jobnum = 0;
+local($any_failure) = 0;
+
+opendir(INDIR, $input_dir) || (print STDERR "$this_prog: Error: Failed reading dir <$input_dir>\n" && &do_exit($SEVERE_ERROR_CODE));
+local(@infile_list) = grep(/HDF(.gz|.Z)?$/, readdir(INDIR));
+closedir(INDIR);
+if ($#infile_list < 0) {
+	print STDERR "$this_prog: Error: There is no input files in $input_dir\n";
+	&do_exit($SEVERE_ERROR_CODE);
+}
+@active_prods_list = ($prod);
+@infile_list = sort (@infile_list);
+
+@options_list{$prod} = $options;
+local($prod_output_dir) = $top_output_dir.&get_dir_name($prod, $tape_id);
+if (-d $prod_output_dir) {
+	if ($remove_old_product) {
+		system("rm $prod_output_dir/*");
+	}
+	else {
+		print STDERR "$this_prog: Directory <$prod_output_dir> exists.  Please move it or remove it.\n";
+		&do_exit($SEVERE_ERROR_CODE);
+	}
+}
+else {
+	do do_system_call("mkdir -p $prod_output_dir");
+}
+
+# Save options to option file in output dir.
+system("echo \"$options\">$prod_output_dir/options");
+do do_system_call("mkdir -p $tmp_dir");
+while (@infile_list) {
+	# One output file contains data for a month.
+	# infile_list can contain data for more than a month--this may not occur.
+	local($rc) = &create_one_file($input_dir, *infile_list, 
+								  $prod_output_dir);
+	if ($rc < 0) {
+		print STDERR "$this_prog: Error: create_one_file failed for $prod.\n";
+		last;
+	}
+	elsif ($rc > 0) {
+		print STDERR "$this_prog: Warning: create_one_file() failed $rc times  starting with jobnum: $jobnum.\n";
+		$any_failure++;
+		# continue
+	}
+}
+
+if ($jobnum > 0) { # finished
+	do set_products_status(*products_status, $stat_array[4], ($prod));
+	do send_status_msg(++$jobnum, $program, "NOFILE", $stat_array[4]);
+}
+	
+do clean_up();
+if ($any_failure > 0) {
+	&do_exit($SEVERE_ERROR_CODE);
+}
+print STDERR "$this_prog: Success.\n";
+&do_exit($SUCCESS_CODE);
+
+################################ Subroutines #################################
+
+
+sub usage {
+	print STDERR "\nGround Validation Production Automation Program for 2A-52\n";
+	print STDERR " Usage ($PROG_VERSION)\n";
+	print STDERR "   $this_prog tape_id [-i top_input_dir] [-o top_output_dir] \n",
+	             "          [-versions_file filename] [-not_report_monitorps]\n",
+#                 "          [-update_inventory_db [-product_processed_num num] ]\n",
+                 "          [-remove_old_products] [-do_not_send_mail]\n",
+	             "          program program_options_file \n";
+	print STDERR " where,\n";
+	print STDERR "    -i:  Specify top input dir where gvs_2A-53-v4_<tapeid>s \n",
+                 "         are under. Only works with 2A-53-v4 since it contains metadata.\n",
+	             "         Default: ./\n";
+	print STDERR "    -o:  Specify top output dir for gvs_<program>_<tapeid>. Default: ./\n";
+	print STDERR "    -versions_file:\n",
+                 "         Specify filename that contains TSDIS products' version numbers.  \n",
+                 "         Default = \$GVS_DATA_PATH/products_version_numbers\n";
+	print STDERR "    -not_report_monitorps:\n",
+	             "         Do not send status messages to monitorps.\n";
+#	print STDERR "    -update_inventory_db:\n",
+#	             "         Yes, add information (product, files,...) to the inventory DB.\n",
+#	             "         Inventory info. may be looked up via a GUI program, 'xgvics'.\n";
+#	print STDERR "    -product_processed_num:\n",
+#	             "         Specify the number for reprocesses. Default: 1.\n",
+#	             "         This is used if -update_inventory_db was specified.\n";
+	print STDERR "    -remove_old_products: Yes, remove existing product(s). Default: exit.\n";
+	print STDERR "    -do_not_send_mail : Do not send a mail message to the production\n",
+                 "         submitter. Default: This program will send a\n",
+                 "         mail message when the program exits.\n";
+	print STDERR "    program        = 2A-52i\n";
+	print STDERR "    program_option = ~/data/options, etc...\n";
+
+	exit($SEVERE_ERROR_CODE);
+}
+
+
+sub process_argvs {
+	local(@argvs) = @_;
+
+	do usage() if ($#argvs < 2);
+	$tape_id = shift @argvs;
+	do usage() if ($tape_id =~ /^\-/);
+	local($str);
+	while (@argvs) {
+		$str = shift @argvs;
+		if ($str =~ /^\-/) {
+			if ($str eq "-i") {
+				$top_input_dir = &change2absolute_dir(shift @argvs);
+				do usage() if ($input_dir =~ /^\-/);
+			}
+			elsif ($str eq "-o") {
+				$top_output_dir = &change2absolute_dir(shift @argvs);
+				do usage() if ($output_dir =~ /^\-/);
+			}
+			elsif ($str eq "-remove_old_products") {
+				$remove_old_product = 1;
+			}
+			elsif ($str eq "-do_not_send_mail") {
+				$yes_send_mail = 0;
+			}
+			elsif ($str eq "-update_inventory_db") {
+				$update_inventory_db = 1;
+			}
+			elsif ($str eq "-product_processed_num") {
+				local($tmp_str) = shift @argvs;
+				do usage() if ($tmp_str =~ /^\-/);
+				$prod_processed_num = $tmp_str;
+			}
+			elsif ($str eq "-not_report_monitorps") {
+				$not_report_monitorps = 1;
+			}
+			elsif ($str eq "-versions_file") {
+				local($tmp_str) = shift @argvs;
+				do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+				# Turn it to absolute path and remove the last '/'.
+				($version_fname = &change2absolute_dir($tmp_str)) =~ s/\/$//;
+			}
+			else {
+				print STDERR "option $str is undefined\n";
+				do usage();
+			}
+
+			next;
+		}
+		last;
+	}
+
+	$program = $str;
+
+	local($options_file) = shift @argvs;
+	if (! (-e $options_file)) {
+		print STDERR "$this_prog: Option file <$options_file> does not exist.\n";
+		&do_exit($SEVERE_ERROR_CODE);
+	}
+	$options = &get_options_from_file($options_file);
+
+} # process_argvs
+
+
+sub create_one_file {
+	local($input_dir, *infile_list, $output_dir) = @_;
+	# Process a month worth of data for 2A-52. The product is in ASCII file.
+	# Modify infile_list -- assuming that list may contain data from multiple
+    # months. infile_list contains filename(s) having the following format: 
+    #    2A53.yymmdd.granule#.site.ver#.HDF[.gz|.Z]
+
+    # Return number of failuer(s) -- 0 if all is successful; -1, otherwise.
+
+	return 0 if ($#infile_list < 0);
+
+	# Construct the output filename based on the first input file from list.
+	# 
+#print STDERR "list: <@infile_list>\n";
+	local($infile) = shift @infile_list;
+	local($mon, $day, $yr, $site);
+	do get_info_from_granule_product_filename($infile, *mon, *day, *yr, *site);
+	local($prod_version_num) = &get_prod_version_num($prod, $out);
+	local($prod_pref) = "2A52";
+	local($yr_2digits) = $yr - 1900;
+	$yr_2digits = $yr - 2000 if ($yr >= 2000);
+	$yr_2digits = "0" . $yr_2digits if ($yr_2digits < 10);
+
+	local($day) = "1"; # First day of the month
+	local($mzero) = "";
+	$mzero = "0" if ($mon =~ /^[0-9]$/);
+	local($dzero) = "";
+	$dzero = "0" if ($day =~ /^[0-9]$/);
+	local($fname_date_str) = "$yr_2digits$mzero$mon$dzero$day";
+
+	local($ascii_outfile) = $output_dir."$prod_pref.$fname_date_str.$site.$prod_version_num";
+
+	local($working_day) = $day;
+	local($working_mon) = $mon;
+	local($working_yr) = $yr;
+	local($prev_infile) = $infile;
+	local($period_flag) = "BEGIN";
+	local($rc) = 0;
+	local($nday) = 1;
+
+	local($failed) = 0;
+	while (@infile_list) {
+
+		$infile = shift @infile_list;
+		do get_info_from_granule_product_filename($infile, *mon, *day, *yr, *site);
+#print STDERR "infile : $infile, $mon, $working_mon, $prev_infile\n\n";
+
+		# Check if this infile belongs to the current output file.
+		if ($mon != $working_mon || $yr != $working_yr) {
+			# Put back -- next month is reached
+			unshift(@infile_list, $infile); 
+			last;
+		}
+		$jobnum++;
+		do set_products_status(*products_status, $stat_array[3], ($prod));
+		do send_status_msg($jobnum, $program , $input_dir.$prev_infile, 
+						   $stat_array[3]); # running
+		$curr_fname = $input_dir.$prev_infile;
+
+		local($tmp_prev_infile) = "$tmp_dir/$prev_infile";
+		$tmp_prev_infile =~ s/(\.gz)|(\.Z)//g;  # Remove extension
+		$rc = do uncompress_file("$input_dir$prev_infile", $tmp_prev_infile);
+		if ($rc < 0) {
+			print  STDERR "$this_prog: Error: Failed to uncompress file <$input_dir$prev_infile\n";
+			$failed++;
+			$stat_index = 0; # Failed
+			goto NEXT; 			# Continue
+		}
+		$cmd = "$program $options $tmp_prev_infile $ascii_outfile $period_flag";
+		print STDERR "$this_prog: Executing <$cmd>...\n";
+		$rc = &do_system_call($cmd);
+		unlink $tmp_prev_infile;
+		$stat_index = 1; # Success
+
+		if ($rc < 0) {
+			$stat_index = 0; # Failed
+			print  STDERR "$this_prog: Error: Failed to execute <$cmd>\n";
+			$failed++;
+			# Continue
+		}
+NEXT:
+		do set_products_status(*products_status, $stat_array[$stat_index], ($prod));
+		
+		do send_status_msg($jobnum, $program, $input_dir.$prev_infile, 
+						   $stat_array[$stat_index]);
+		$curr_fname = "";
+		
+		$prev_infile = $infile;
+		$period_flag = "MIDDLE" if ($period_flag eq "BEGIN");
+	}
+	if ($jobnum == 0) {
+		$period_flag = "BEGIN"; # THere is only one file this month.
+	}
+	else {
+		$period_flag = "END";
+	}
+	$jobnum++;
+	do set_products_status(*products_status, $stat_array[3], ($prod));
+		
+	do send_status_msg($jobnum, $program , $input_dir.$prev_infile, 
+					   $stat_array[3]); # running
+	$curr_fname = $input_dir.$prev_infile;
+
+	local($tmp_prev_infile) = "$tmp_dir$prev_infile";
+	$tmp_prev_infile =~ s/(\.gz)|(\.Z)//g;  # Remove extension
+	$rc = do uncompress_file("$input_dir$prev_infile", $tmp_prev_infile);
+	if ($rc < 0) {
+		print  STDERR "$this_prog: Error: Failed to uncompress file <$input_dir$prev_infile\n";
+		$failed++;
+		$stat_index = 0; # Failed
+	}
+	else {
+		local($cmd) = "$program $options $tmp_prev_infile $ascii_outfile $period_flag";
+		print STDERR "$this_prog: Executing <$cmd>...\n";
+		$rc = &do_system_call($cmd);
+		unlink $tmp_prev_infile;
+		$stat_index = 1; # Successful
+		if ($rc < 0) {
+			$stat_index = 0; # Failed
+			print  STDERR "$this_prog: Error: Failed to execute <$cmd>\n";
+			$failed++;
+		}
+	}
+	do set_products_status(*products_status, $stat_array[$stat_index], ($prod));
+	
+	do send_status_msg($jobnum, $program, $input_dir.$prev_infile, 
+					   $stat_array[$stat_index]);
+	$curr_fname = "";
+
+	return $failed;
+} # create_one_file 
+
+sub clean_up {
+
+	if ($update_inventory_db) {
+		# Send info of each file for all products to GV inventory DB.
+		do send_product_info_to_inventory($tape_id, *active_prods_list, *options_list,
+								  $prod_processed_num, *products_status,
+								  "");
+	}
+	if (-d $tmp_dir) {
+		system("rm -r $tmp_dir");
+	}
+}
+
+sub do_system_call {
+	local($cmd) = @_;
+	# Returns -1 for failure
+	#         1 for successful
+	return -1 if ($cmd eq "");
+
+	system($cmd);
+	$status = $? >> 8;
+	local($signal) = $? & 255;
+	do doexit_handler($signal) if ($signal != 0);
+	do doexit_handler('INT') if (&interrupted($status));  # this will exit 
+	return -1 if (&is_severe_error($status));
+	return 1;
+}
+
+
+sub doexit_handler {
+	local($signal) = @_;
+    # Ignore signals
+	do ignore_catched_signals();
+
+	local($rc) = $SEVERE_ERROR_CODE;
+	local($stat_index) = 0; # Failed
+	if ($signal eq 'INT' || $signal eq 'KILL' || $signal eq 'STOP' ||
+		$signal == 9 || $signal == 2) {
+		$rc = $INTER_CODE;
+		$stat_index = 5; # interrupted
+	}
+	if ($first_time_exit_handler) {
+		$first_time_exit_handler = 0;
+		print STDERR "$this_prog: Received signal <$signal>\n";
+		if ($curr_fname ne "") {
+			do set_products_status(*products_status, $stat_array[$stat_index], ($prod));
+			do send_status_msg($jobnum, $program, $curr_fname, $stat_array[$stat_index]);
+		}
+		do set_products_status(*products_status, $stat_array[4], ($prod));
+		do send_status_msg(++$jobnum, $program, "NOFILE", $stat_array[4])
+			if ($jobnum > 0) ; # finished
+		do clean_up();
+	}
+
+
+	do do_exit($rc);
+}
+
+

@@ -1,0 +1,500 @@
+#! /usr/bin/perl
+#-*-Perl-*-
+#
+# Run GVS 3.* level 2 for the AIW-II workshop.
+#
+# The input data must be in 2 directories:
+#   a) 1C-51 directory.
+#   b) 2A-54 directory.
+# The input directory names are command line arguments.
+#
+# The output will be in the current directory and will be in ASCII
+# whenever possible.  It will be compatable with GTS 2.5.5 (pre-GVS)
+# output.
+#
+# The normal output of GVS 3.* is HDF and a set of programs are provided
+# to convert the HDF files to ASCII.  This processing scheme was selected
+# as an easier course than back-patching gts 2.5.5 to use the new 2A-53
+# algorithms supplied by both Danny and Witek.  The TO had already interfaced
+# them to HDF before it was realized that these algorithms must be run
+# for the AIW-II.
+#-----------------------------------------------------------------------------
+#
+# Usage:
+#
+# aiwII_level2 tape-id prog1 prog1.opt [prog2 prog2.opt [prog3 prog3.opt ...]] 
+#
+# Where: prog* == 2A-53-d, 2A-53-w, 2A-55
+#
+# Example
+#   aiwII_level2 W93-01 2A-53-d 2A-53-d.opt
+#      a. The tape id is 'W93-01'
+#      b. Look for 1C-51 data in the directory gts_1C-51_W93-01.
+#      c. Look for 2A-54 data in the directory gts_2A-54_W93-01.
+#      d. Create directory gvs_2A-53-d_W93-01 and place all output there.
+#
+# This program will process each 1C-51 UF file and corresponding
+# 2A-54 file.
+#
+# Input files must be of the form, as created by gts 2.5.5:
+#     ref_950922_1159.uf.gz
+#     csmap.ascii.950922.1159
+#
+# This program was derived from 'all_tape_level_1n2' from gts 2.5.5.
+#-----------------------------------------------------------------------------
+# By: John H. Merritt
+#     NASA/TRMM Office
+#     Applied Research Corporation
+#     john.merritt@gsfc.nasa.gov
+#
+#             and
+#
+#     Thuy T. Nguyen
+#     NASA/TRMM Office
+#     Internaltional Database Systems
+#     Thuy.Nguyen@gsfc.nasa.gov
+#
+#     Copyright 1996
+#
+#############################################################################
+
+# defining some global variables
+@path = split(/\//, $0);
+$this_prog = $path[$#path];
+$device = "Disk";
+
+%programs = (
+#  PRODUCT     EXECUTABLE  -- The product doesn't have to be the same
+#-----------  --------------- as the executable.
+   '2A-53-d',  'singlevos_2A-53-d_aiw',
+   '2A-53-w',  'singlevos_2A-53-w_aiw',
+   '2A-55',    'singlevos_2A-55_aiw'
+			 );
+
+# Nothing selected, by default.
+foreach $p (keys(%programs)) {
+	$product_list{$p} = 0;
+}
+
+# status string used when calling 'send_status'. index starts at 0
+@stat_array = ("failed", "successful", "warning",  "running", "finished");
+
+# list of products specified by the user 
+@selected_prods;
+
+$tapeid = "";
+$log_dir = "";
+$NULL_LOGFILE = "/dev/null";
+
+$top_working_dir = `pwd`;
+chop $top_working_dir;
+$create_log = 0;   # create log dir and logfile(s) flag
+
+# Process arguments and set up the environment.  It sets which products
+# are specified.
+
+do process_args (@ARGV);
+print STDERR "This program is: $0\n";
+
+$dir_1C51 = $top_working_dir."/". &get_dir_name("1C-51", $tape_id);
+
+if (&level2_product_specified()) {
+	do run_level2($top_working_dir);
+}
+do clean_up($top_working_dir);  # remove look up tables, etc. 
+print STDERR "$this_prog: Done.\n";
+
+
+exit (0);
+
+############################## Subroutines ###############################
+sub usage {
+	print STDERR "Usage: $this_prog tape_id [-l]  \n";
+	print STDERR "\t\tproduct1 product1_options_file\n";
+	print STDERR "\t\t[product2 product2_options_file]\n";
+	print STDERR "\t\t\t...\n";
+	print STDERR "\t\t[productN productN_options_file]\n";
+	print STDERR "\twhere:\n";
+    print STDERR "\t\ttape_id = The physical label. Ex. TAPE0001.\n";
+   	print STDERR "\t\tproduct = 2A-53-d, 2A-53-w, 2A-55\n";
+    print STDERR "\t\tproduct_options_file = 2A-53-d.opt, etc. (any file)\n";
+	print STDERR "\t\t-l: log directory and logfile(s) will be created.\n\n";
+	print STDERR " NOTES:\n";
+	print STDERR "  1. Option file contains product's options, listed in one line, and ends \n";
+	print STDERR "     with a newline character.  Don't include -t for 2A-53-w nor 2A-55.\n";
+	print STDERR "  2. This script will create ./gvs_<product>_<tapeid> for each specified\n";
+	print STDERR "     product and store its result there.\n";
+	print STDERR "  3. This script will create ./gvs_<tapeid>_log and store log information for\n";
+	print STDERR "   each specified product there if -l is specified.\n";
+	print STDERR "  4. Set environment variable, GVS_DATA_PATH, to where GVS' data is installed.\n";
+	print STDERR "\n";
+    exit -1;
+}
+sub process_args {
+	local(@arglist) = @_;
+
+	if ($#arglist < 2) {
+		do usage();
+	}
+
+	$tape_id = shift @arglist;
+	local($product) = "";
+	local($count) = 0;
+	local($str);
+	while ($#arglist > 0) {
+		$str = shift @arglist;
+		if ($str eq "-l") {
+			if ($product ne "") {
+				do usage();
+			}
+			$create_log = 1;
+			# create log dir. if not already exists to store 
+			# all of the log files
+			$log_dir = &create_log_dir($tape_id);
+			next
+		}
+		
+		$product = $str;
+		$options_file = shift @arglist;
+
+		if ("$product_list{$product}" eq "") {
+			print STDERR "$this_prog: WARNING: Product $product is unknown.\n";
+			next;
+		}
+
+		$product_list{$product} = 1;
+		$options_list{$product} = &create_workdir($product, $tape_id, $options_file);
+		# remove old log file
+		unlink(&get_logfile_name($product, $tape_id));
+		
+		# add product to selected prog list 
+		
+		$selected_prods[$count] = $product;
+		$count++;
+
+	}
+}
+
+sub run_level2 {
+	local($top_dir) = @_;
+
+	# Determine if a file, named $dir_1C-51/Darwin, exists.  If it exists,
+	# the data set is Lassen; append '-t L' to the
+    # option list for some products, i.e., 2A-53-d, 2A-54, 2A-55. 
+	# This allows users to specify only -v in the option file.
+
+#
+# This list should contain the same 'keys' as %programs, however,
+# how do I get this order?  'keys()' returns a random order.
+	local($csmap);
+	local($infile);
+	local($outfile);
+	local(@process_order);
+	@process_order = ('2A-53-d', '2A-53-w', '2A-55');
+
+	$prefix_opts = "-t W";  # default is wsr88d data
+	if (-e "$dir_1C51/Darwin") {
+		$prefix_opts = "-t L";
+	}
+
+    # Processing level II products
+	# For each uf file:
+	#  - Run all selected products with it. 
+	#  - Note: 
+	#    The order of executions for products are relevant because:
+	#        2A-53-d, 2A-53-w, 2A-55 require 2A-54 and 1C-51
+	#        2A-55 requires 1C-51
+	#    
+	
+
+	opendir(THISDIR, $dir_1C51);
+	# only want  non . files 
+	local(@infile_list) = grep(!/^\./, readdir(THISDIR));
+	closedir(THISDIR);
+	$jobnum = 0;
+	while (@infile_list) {
+		$tmpfile = shift @infile_list;
+		# if not a uf file continue
+		if (!($tmpfile =~ /\.uf/) ) {
+			next;
+		}
+		$jobnum++;
+		$uffile = $dir_1C51."/".$tmpfile;
+
+		foreach $p (@process_order) {
+			next if ($product_list{$p} != 1);
+			do cd_to_workdir($top_dir, $p, $tape_id);
+			$outfile = &get_filename($p, $uffile);
+			$infile  = $uffile;
+			$options = $options_list{$p};
+			$options = "$prefix_opts $options" if ($p eq "2A-53-w" ||
+												   $p eq "2A-54"   ||
+												   $p eq "2A-55");
+			$csmap = "";
+			$csmap = &get_filename('2A-54', $uffile) if ($p eq "2A-53-w" ||
+														 $p eq "2A-53-d" ||
+														 $p eq "2A-55");
+
+			$infile = &get_filename('2A-53-w', $uffile) if ($p eq "2A-52i");
+			do process_level2($p, $jobnum, $infile, $outfile,
+							  $options, $csmap);
+		}
+	}
+	# send finish status message for each selected product
+	do send_finish_stat_for_products(@selected_prods);
+} # run_level2
+
+sub send_finish_stat_for_products {
+	local(@prods) = @_;
+	local($p);
+
+	while ($#prods > -1) {
+		$p = shift @prods;
+		$logfile = &get_logfile_name($p, $tape_id);
+		do send_status_msg(1, $p, "NOFILE", $stat_array[4], $logfile); # 
+	}
+}
+
+sub level2_product_specified {
+	if (($product_list{'2A-52i'} == 1)     ||
+		($product_list{'2A-53-d'} == 1)    ||
+		($product_list{'2A-53-w'} == 1)    ||
+		($product_list{'2A-54'} == 1)      ||
+		($product_list{'2A-55'} == 1)) {
+		return 1;
+	}
+	return 0;
+}
+
+sub get_dir_name {
+	local($product, $tape_id) = @_;
+	
+	return "gts_" . $product . "_" . $tape_id;
+}
+
+sub get_logfile_name {
+	# returns dir/logfilename
+	local($product, $tape_id) = @_;
+	if ($create_log == 0) {
+		$name = $NULL_LOGFILE;
+	}
+	else {
+		$name = $top_working_dir."/".$log_dir."/".$tape_id.".". $product . ".log";
+	}
+}
+
+sub create_log_dir {
+	# relative to the current working dir
+	local($tape_id) = @_;
+	local($d) = "gvs_".$tape_id."_log";
+	if (! -d $d) {
+		system("mkdir ". $d);
+		system("chmod -R g+w ".$d);
+	}
+	return $d;
+}
+
+sub create_workdir {
+	local($product, $tape_id, $options_file) = @_;
+
+	# create directory to run product.
+	local($dir) = &get_dir_name($product, $tape_id);
+
+	if (! -d $dir) {
+		system("mkdir ". $dir);
+		system("chmod -R g+w ".$dir);
+	}
+	else {
+		do clean_up($top_working_dir);  # remove old look up tables, etc. 
+	}
+
+
+	#copy options file to product's directory
+	if (-f $options_file) {
+		# remove old option file if exists--sgi doesnot support 'cp -f'
+		@splitted_opt_file = split(/\//, $options_file);
+		local($new_fname) = "$dir/$splitted_opt_file[$#splitted_opt_file]";
+		if (-e $new_fname) {
+			system("rm ".$new_fname);
+		}
+		system("cp ".$options_file. " ".$dir);
+	}
+	$msg = "$this_prog: Will produce $product products in ./$dir ...\n";
+	$logfile = &get_logfile_name($product, $tape_id);
+	$cmd = "/bin/echo \"$msg\" >> $logfile";
+	print STDERR $msg;
+	system($cmd);
+	$options = &get_options($options_file);
+}
+
+sub cd_to_workdir {
+        local($top_dir, $product, $tape_id) = @_;
+        local($dir) = "$top_dir/".&get_dir_name($product, $tape_id);
+        chdir($dir);
+}							
+
+
+
+sub  send_status_msg {
+	local($jobnum, $p, $infile, $stat_str, $logfile) = @_;
+
+	# sends status message to screen and appends msg to logfile
+	local($options) = "";
+	local($prod) = "";
+	local($product) = "";
+
+# Determine the product name from the program executed.
+	foreach $prod (keys %programs) {
+		if ("$programs{$prod}" eq "$p") {
+			$product = $prod;
+			last;
+		} else {
+			print STDERR "Unable to find $p.\n";
+		}
+			
+	}
+	
+	$options = "-e" if ($logfile ne $NULL_LOGFILE);
+	local($stat_msg) = "$options $jobnum $tape_id $device $product $infile $stat_str";
+
+	$send_cmd = "/bin/sh -c \"send_status $stat_msg  2>&1|tee -a $logfile\"";
+	system($send_cmd);
+	$send_cmd = "/bin/sh -c \"echo $stat_msg  2>&1|tee -a $logfile\"";
+	system($send_cmd);
+}
+
+sub exec_command {
+	local($jobnum, $cmd, $infile, $logfile) = @_;
+
+	local($rc) = 3;
+	local($p, $t1) = $cmd =~ /^(\S+) (.*)$/;
+
+	do send_status_msg($jobnum, $p, $infile, $stat_array[$rc], $logfile);	
+	# msg is append to logfile and written to screen
+	$msg = "$this_prog: Executing...$cmd";
+	system("/bin/echo \"$msg\">>$logfile");
+	print STDERR $msg, "\n";
+	$newcmd = "/bin/sh -c \"$cmd 2>&1|tee -a $logfile\"";
+	system($newcmd);
+	$status = $? >> 8;
+	$rc = 0;
+	if ($status == -1) {
+		system("/bin/echo \"$this_prog: Failed executing: $cmd\" >> $logfile");
+		print STDERR "$this_prog: Failed executing: $cmd\n";
+		$rc = -1;
+	}
+	do send_status_msg($jobnum, $p, $infile, $stat_array[$rc+1], $logfile);
+	return $rc;
+}
+
+sub untar_file {
+	local($filename) = @_;
+	
+	# make tmp/$filename directory and copy data file there. Do work there.
+	local($dir) = "tmp/".$filename;
+	system ("mkdir -p ".$dir);
+	system ("mv ".$filename. " ".$dir);
+	chdir ($dir);
+	system("tar xf ".$filename);
+	unlink $filename;
+#	opendir(THISDIR, ".");
+#	@file_list = grep(!/^\./, readdir(THISDIR));
+#	closedir(THISDIR);
+#	foreach $file (@file_list) {
+#		system ("gunzip -q ".$file);
+#	}
+	chdir("../../");
+}
+
+# Get options from options file.  File has to be in the working directory.
+sub get_options {
+	local($fname) = @_;
+	local($opts);
+
+	if (!open (OPTIONS, $fname)) {
+		print STDERR "$this_prog: Can's open option file -- $fname -- use defaults\n";
+		$opts = "";
+	}
+	else {
+		$opts = <OPTIONS>; 
+		chop $opts;
+	}
+	$opts;
+}
+
+
+sub process_level2 {
+	local($product, $jobnum, $infile, $outfile, $options, $auxfile) = @_;
+# Everyone needs $jobnum, $infile, $options
+# 2A-52i needs  $rrmap ($infile), NULL $auxfile
+# 2A-53-* needs $csmap ($infile)
+# All but 2A-55 and 2A-53-d need $outfile
+	local($executable) = $programs{$product};
+	local($logfile) = &get_logfile_name($product, $tape_id);
+	local($second);
+
+# First  parameter is a job# counter.
+# Second parameter is the system command.
+# Third  parameter is just for 'send_status'.
+# Fourth parameter is a logfile.
+	local($first)  = $jobnum;
+	if ($product eq "2A-53-w") {
+		$second = "$executable $options $infile $auxfile $outfile";
+	} elsif ($product eq "2A-53-d") {
+		$second = "$executable $options $infile $auxfile $outfile";
+	} else {
+		$auxfile = "" if ($product eq "2A-52i");
+		$outfile = "" if ($product eq "2A-54");
+		$second  = "$executable $options $infile $auxfile $outfile";
+	}
+	local($third)  = $infile;
+	local($fourth) = $logfile;
+	do exec_command($first, $second, $third, $fourth);
+}
+
+
+sub clean_up {
+	local($top_dir) = @_;
+
+	if ($product_list{'2A-53-w'} == 1) {
+		do cd_to_workdir($top_dir, $e2A53a, $tape_id);
+		# remove lookup tables 
+		if (-e "height.DR") {
+			system("rm -f *.DR");
+		}
+		elsif (-e "height.FL") {
+			system("rm -f *.FL");
+		}
+		chdir($top_dir);
+	}
+
+	if ($product_list{'2A-53-d'} == 1) {
+		do cd_to_workdir($top_dir, $e2A53d, $tape_id);
+		# remove unused file
+		if (-e "gwin.out") {
+			system("rm -f gwin.out");
+		}
+		chdir($top_dir);
+	}
+} 
+
+sub get_filename {
+	local($product, $uffile) = @_;
+	local(@path) = split(/\//, $uffile);
+	local($date_str, $time_str) = $uffile =~ /.+(\d\d\d\d\d\d)_(\d\d\d\d).+/;
+	local($fname);
+	if ($product eq "2A-52i") {
+		($fname = $path[$#path]) =~ s/uf.*/rstat/g;
+	} elsif ($product eq "2A-53-d") {
+		($fname = $path[$#path]) =~ s/uf.*/rrmap/g;
+	} elsif ($product eq "2A-53-w") {
+		($fname = $path[$#path]) =~ s/uf.*/rrmap/g;
+	} elsif ($product eq "2A-55") {
+		($fname = $path[$#path]) =~ s/uf.*/hdf/g;
+	} elsif ($product eq "2A-54") {
+		$fname = "csmap.ascii.$date_str.$time_str";
+	}
+
+	local($dir) = &get_dir_name($product, $tape_id);
+	return "$top_working_dir/$dir/$fname";
+}

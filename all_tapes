@@ -1,0 +1,176 @@
+#! /usr/bin/perl
+#-*-Perl-*-
+#
+# This program calls 'all_tape_level_1n2' for each specified tape_id.
+#
+# Usage:
+#    all_tapes device tape_id [options]
+#        product product_options_file [product product_options_file]...
+#        [ 
+#          device tape_id [options] 
+#          product product_options_file [product product_options_file]...
+#        ]...
+#
+# Exit code: 
+#               -2 -- ($INTER_CODE)Program was aborted by '^C'.
+#               -1 -- ($ERROR_CODE) When there is failure.
+#                0 -- ($SUCCESS_CODE)Everything is successful.
+#                2 -- ($OUT_OF_SPACE_CODE) There is not enough space to continue.
+#
+#
+# Required program(s):
+#    'all_tape_level_1n2'
+# 
+# By:
+#     Thuy T. Nguyen
+#     NASA/TRMM Office
+#     Thuy.Nguyen@gsfc.nasa.gov
+#
+#     Copyright 1996
+#
+###########################################################################
+
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'all_tape_common.pl';
+
+@cmd_list;
+do process_argvs();
+
+# Run the all tape program for each specified tape.
+while (@cmd_list) {
+	local($cmd) = shift @cmd_list;
+	print STDERR "$this_prog: Executing... $cmd\n";
+	system($cmd);
+	$status = $? >> 8;
+	$signal = $? & 255;
+	do doexit_handler($signal) if ($signal != 0);
+
+	if (&interrupted($status)) {
+		print STDERR "$this_prog: Interrupted.\n";
+		$rc = $INTER_CODE;
+		goto DONE;
+	}
+	elsif (&is_severe_error($status)) {
+		print STDERR "$this_prog: Failed executing: $cmd\n";
+		$rc = SEVERE_ERROR_CODE; # failed
+	}
+	elsif (&out_of_space($status)) {
+		$rc = $OUT_OF_SPACE_CODE;
+		goto DONE;
+	}
+	else {
+		print STDERR "$this_prog: Done executing successfully... $cmd\n";
+		$rc == $SUCCESS_CODE;
+	}
+}
+
+DONE:
+exit($rc);
+
+############################## Sub routines ################################
+sub process_argvs {
+	
+	if ($#ARGV < 3) {
+		do usage();
+	}
+
+	while(@ARGV) {
+		$device = shift @ARGV;
+		$tapeid = shift @ARGV;
+		
+		# Get options
+		$options = "";
+		while (@ARGV) {
+			$str = shift @ARGV;
+			if ($str =~ /^\-/) {
+				$value = "";
+				$value = shift @ARGV if $str ne "-g";
+				$options = "$options $str $value";
+			}
+			else {
+				# no more option
+				unshift (@ARGV, $str);
+				last;
+			}
+		}
+		# Get products and their options files
+		$prod_list = "";
+		$prod = "";
+		$opts_file = "";
+		while (@ARGV) {
+			$str = shift @ARGV;
+			if ($str eq "disk" || $str eq "CD" || $str =~ /^\//) {
+				# Next tape starts since device is encountered.
+				unshift (@ARGV, $str);
+				last;
+			}
+			$prod = $str;
+			$opts_file = shift @ARGV;
+			do usage() if ($prod eq "" || $opts_file eq "");
+			
+			$prod_list = "$prod_list $prod $opts_file";
+		}
+		$prod_list = "$prod_list $prod $opts_file" if $prod_list eq "";
+		do usage() if ($prod_list eq "  " || $device eq "" || $tapeid eq "");
+
+		# Add to cmd_list
+		$cmd = "all_tape_level_1n2 $device $tapeid $options $prod_list >& $tapeid.log";
+		push(@cmd_list, $cmd);
+	}
+} # process_argvs
+
+sub usage {
+	print STDERR "Usage ($PROG_VERSION)\n";
+	"    $this_prog device tape_id [options]\n",
+	"\t\tproduct product_options_file [product product_options_file]...\n",
+	"\t\t[ \n",
+	"\t\t  device tape_id [options] \n",
+	"\t\t  product product_options_file [product product_options_file]...\n",
+	"\t\t]...\n",
+	"\n  where:\n";
+   
+    print STDERR "\tdevice         = disk, CD, /dev/8mm1, /dev/8mm2, etc.\n";
+    print STDERR "\ttape_id        = The physical label. Ex. TAPE0001.\n";
+	print STDERR "\n  options (belong to 'all_tape_level_1n2'):\n";
+	print STDERR "\t-g             : Run level II at hour-granule level. Default is to\n";
+	print STDERR "\t                 run at single vos level (optimize). \n";
+	print STDERR "\t-raw_dir       : Specify directory for raw data. Default = `pwd`.\n",
+    "\t                 Specify this if data files are not from tape.\n";
+	print STDERR "\t-start_raw_file: Specify raw filename to start production at.\n";
+	print STDERR "\t-qc_dir        : Specify qc data directory. \n",
+	"\t                 Default = \"\$top_input_dir/gvs_level_1_<tapeid>\". \n",
+	"\t                 Specified this if 1C-51 products exist.\n";
+	print STDERR "\t-csmap_dir     : Specify csmap data directory. \n",
+	"\t                 Default = \"\$top_input_dir/gvs_2A-54_<tapeid>\". \n",
+	"\t                 Specified this if 2A-54 products exist.\n";
+	print STDERR "\t-rrmap_dir     : Specify rrmap data directory. \n",
+	"\t                 Default = \"\$top_input_dir/gvs_2A-53-w_<tapeid>\". \n",
+	"\t                 Specified this if 2A-53-w products exist.\n";
+	print STDERR "\t-w             : Specify working directory. Default = `pwd`.\n";
+	print STDERR "\t-i             : Specify level II top input directory where \n",
+	"\t                 gvs_<product>_<tapeid>s are under. Default = `pwd`.\n";
+	print STDERR "\t-o             : Specify top output directory where \n",
+	"\t                 gvs_<product>_<tapeid>s will be created under. \n",
+	"\t                 Default = `pwd`.\n";
+
+	exit(-1);
+}
+
+sub doexit_handler {
+	
+	local($signal) = @_;
+
+	# Restore STDERR and STDOUT. 
+    # Ignore signals
+	do ignore_catched_signals();
+	close(1);
+	close(2);
+	open(STDOUT, ">/dev/tty");
+	open(STDERR, ">/dev/tty");
+	$rc = SEVERE_ERROR_CODE;
+	$rc = $INTER_CODE if ($signal eq 'KILL' || $signal eq 'STOP' ||
+						  $signal eq 'INT');
+	exit($rc);
+}
+
+

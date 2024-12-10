@@ -1,0 +1,275 @@
+CHANGES for gvs_production
+
+v3.21 (1/07/2008)
+----------------
+1. 12/16/2005 by D. Makofski
+   Modified get_available_disk_space in all_tape_common.pl.  Changed the way
+   it locates the available space field from df output, where it failed if long
+   device names broke into multiple lines.
+
+v3.20 (9/08/2003)
+----------------
+1. Fixed Y2K bug in all_tape_2A-52.
+2. Modified all_tape_level_1n2 for dual CAPPI processing. - G. Wilkerson 
+3. Completed modifications to level_3 begun by G. Wilkerson for dual CAPPI
+   processing.
+4. Modified level_3 to handle time gap parameters used in gvs
+   acc_rrmaps_granule_hdf.  Added "-wsr88d" option to allow user to specify use
+   of WSR-88D time gap paramters.  Added code to determine whether or not radar
+   site is WSR-88D in absence of the "-wsr88d" option.  A new function,
+   "is_wsr88d", was added to do the look up.  Time gap parameters are passed to
+   3A-53 and 3A-54.  See gvs/CHANGES under v4.20 for details on time gap
+   parameters.
+5. Updated documentation.
+
+v3.19 (4/17/2001)
+----------------
+1. Fixed Y2K bug in level_3.
+
+v3.18 (7/24/2000)
+----------------
+1. Fixed bug in all_tape_level_1 w.r.t skipping first .uf.gz file to
+   make .HDF 
+
+2. Changed to check for operating system (IRIX or non-IRIX) 
+   before running mail or mailx.
+
+
+v3.17 (2/17/00)
+----------------
+1. Added dummy send_status and send_products.  Installed they aren't
+   already present in $(bindir)
+
+2. Changed mailx to mail.
+
+
+v3.16 (12/21/99)
+----------------
+1. Uses configure.
+
+v3.15 (11/30/99)
+----------------
+1. Added -v option to all_tape_level_1n2.
+
+
+v3.14 (11/13/98)
+----------------
+* Added more options to 'all_tape_level_1'[n2]:
+         [-tape_has_no_header_file | -header_file_number number]
+         [-first_data_file_number number]
+         [-v (verbose)
+* The all_tape scripts can handle data file name with 5-digit sequential num.
+
+
+v3.13 (10/26/98)
+---------------
+* Minor changes in the Makefile.
+* Changed hdf2img and hdf2img_for_dir:
+    - Support 3A-53, 3A-54 
+    - Changed command syntax 
+* Requires 'any_to_gif' in rsl-v1.18.tgz.
+* Bug fixed in all_tape_level_1n2 w.r.t. creating empty granule for level_2.
+
+v3.12 (8/17/98)
+---------------
+* Fixed bug in all_tape_level_1 in create_absolute_path()--Error occurred
+  when dir name contains '.',  i.e., gvs-v4.7-sample.
+* Fixed bug in 'level_3' (only affected when there is one file in the 
+  product input dir).
+* Minor mods and updates in html pages.
+* Added more routines in all_tape_common.pl
+* Requires gv_utils (v1.9)
+* Added new option, '-versions_file filename', to  level_3,
+    all_tape_2A-52i, monthly_2A-52--this file contains product version #
+    used to create product filename.
+* Changed products' version# to 2 in 'products_version_numbers'.
+* Added target uninstall_everthing in Makefile.
+
+v3.11 (6/9/98)
+--------------
+* Minor usage message changes for 'level_3'.
+* Bug fixes in level_3.
+* Added a new routine in gvs_production.pl.
+* Added document title in all_tape.html and all_tape_body.html.
+* all_tape* handle Berrimah data set.
+* Removed option, -gunn_point_darwin, from all_tape*.
+* Updated doc and move them to ./doc.
+* Added more send_status messages in all_tape_level_1n2.
+* Changed the doc path in the Makefile.
+* Simplified the installation steps.
+
+v3.10 (3/30/98)
+-------------
+* Added table of contents to the documentation.
+* Fixed bug in level_1_singlevos_uf_to_granule_hdf
+
+v3.9 (3/24/98)
+--------------
+* Fixed bug in all_tape_level_1n2 and all_tape_2A-52.
+* Can create empty granule product(s).
+* Fixed bug in level_3: -do_not_send_mail and 3A-53 processing.
+* level_3 will compress its HDF products.
+* Fixed signal handling in all scripts that caused infinite loop. 
+* Don't remove the working and temp. dirs if they exist.
+* Added a new option, '-w working_dir', to level_3.
+* Scripts will ignore the exit code (-1) of 'send_status'.
+* 'all_tape_level_1' can proces either UF files or raw radar files.
+* Added option, -not_report_monitorps, to all_tape_level* and
+  level_1_singlevos_to_hdf.
+
+v3.8 (1/28/98)
+---------------
+* Changed all_tape_level_1n2, hdf2img, monthly_2A-52:
+
+    -- Uncompresse input file(s) to the working dir -- leave the original
+       input file(s) unmodified. (Performance is improved since there is 
+       no need to compress the original input file(s) back.
+
+* Added a new option to all_tape_level_1: -leave_raw_data_on_disk.
+
+* Added a new option -gunn_point_darwin (used for checking space only)
+  in all_tape_level_1 and all_tape_level_1n2.
+
+* Changed in 'level_3' and 'all_tape_2A-52:
+   -- Attached 'send_status' in programs -- the programs now send job status 
+      msg to monitorps deamon.
+   -- Programs continue when failure exists.
+   -- Added more options.
+
+* all_tape_level_1n2 will not compress the level 2 temporary single VOS 
+  product(s).
+
+v3.7 (12/19/97)
+---------------
+
+* Added copyright notes.
+* Renamed from gvs_utils to gvs_production and gvs_utils_common.pl to
+  gvs_production_common.pl.
+* Renamed 'all_tape_level_3' to 'level_3'.
+* Improved usage messages for 'level_3' and 'all_tape_2A-52'.
+* Modified 'level_1_singlevos_uf_to_granule_hdf':
+    - Bug fixes w.r.t. output dirs.
+    - Removed file doesnot exist messages when compressing.
+* Modified 'all_tape_level_1n2':
+    - The program will send email to the production submitter when 
+      it is done. Can turn this feature off with 'do_not_send_mail'.
+
+v3.6 (10/28/97)
+---------------
+1. Minor mods. in some perl scripts w.r.t. @INC
+2. Upgraded all_tape_level_1n2 to call the new program names -- compatible 
+   with gvs v3.7 or later.
+3. Bug fixes w.r.t. working and output directories and removing temp. dir
+   when done processing.
+4. all_tape* doesnot use site file in product directory to determine site name,
+   but instead it gets site name from one of 1C-51 HDF files.  If it fails to
+   get site name from there, then the algorithm programs will determine 
+   site name.
+5. Updated doc.
+6. Moved 2A-53_hdf2ascii.c and 2A-55_hdf2ascii.c to 'gvs v4.1'.
+7. No longer requires hdf and toolkit libraries.
+8. Requires gvs v4.1 or later.
+9. Added options to all_tape_level_1[n2] that enable the user to specify the 
+   last input file to be processed--Can specify a range of files to be processed.
+10. Bug fixes in monthly_2A-52.
+11. Added level 3 in product_version_numbers
+12. Added 'all_tape_level_3' and 'all_tape_2A-52' for processing level 3 
+    products and 2A-52i, respectively.
+13. Fixed the product's filename produced by 'monthly_2A-52'.
+
+
+v3.5 (7/25/97)
+---------------
+1. Modified all_tape_level_1n2 w.r.t. date/time for product monitoring.
+2. Moved some routines from all_tape_level_1 to gvs_utils_common.pl
+3. Added level_1_singlevos_uf_to_granule_hdf.
+4. Minor mods in 'all_tape_level_1' and 'all_tape_level_1n2'.
+5. all_tape_level_1 recognizes either a 3-digit or 4-digit sequential number
+   from raw filenames; it can handle up to 4-digit raw input files.
+6. Changed the command syntax for 'monthly_2A-52'.
+
+v3.4 (6/30/97)
+--------------
+1. Added files: monthly_2A-52, gvs_utils_common.pl, and monthly_2A-52.html.
+2. Removed 2A-52i processing in all_tape_level_1n2. Updated documentation.
+3. Remove file 2A-52_hdf2ascii.c.
+4. Moved some routines from 'all_tape_common.pl' to 'gvs_utils_common.pl'.
+5. Bug fixes w.r.t. top working and tmp dirs.
+
+v3.3 (6/12/97)
+--------------
+1. Bug fixes in all_tape* w.r.t. product compression and syntax error.
+2. Changed default value for max_vos_per_hour and changed 
+   max_vos_per_granule to max_num_raw_files_per_hour.
+3. Changed all_tape_level_1n2 to support metadata.
+4. Requires the next release of gvs (the current release is gvs-v3.4).
+5. Added version number to some of programs' usage messages.
+6. Can handle data set from any site, as long as 'level_1' supports it, for 
+   processing level_1.  Level 2 -- is unchanged -- can handle Melbourne and 
+   Darwin only.
+7. Minor modification in products_version_numbers.
+
+
+v3.2  (5/16/97)
+---------------
+1. Bug fixes w.r.t. compressing level 1 products.
+2. all_tape_level_1 automatically determines the site name and pass it to 
+   'level_1'.
+3. Added options: 
+      -input_product_for_2A-52i,
+      -start_qc_file filename,
+      -start_csmap_file filename,
+      -start_rrmap_file filename.
+
+4. Changed WSR-88D, NEXRAD, LASSEN, and NSIG references to Melbourne, 
+   Darwin, and Kwajalein in both the documentation and the all_tape scripts.
+
+v3.1 (5/8/97)
+-------------
+1. Fixed file compression in all_tape_level_1 (Now uses max_vos_per_granule
+   to determine when to compress file).
+2. Change all_tape_level_1n2 w.r.t. products' filename.  Added a data file,
+    'products_version_numbers'.
+3. Fixed the makefile w.r.t. the linking.
+4. Added code in  'all_tape_level_1n2' to handle '2A-53-v4' and fixed bug 
+   w.r.t. '-g' option.
+5. Updated 'all_tape.html'
+6. 'all_tape' can handle NSIG data (KWAJ) in addition to WSR88D and LASSEN.
+7. 'all_tape_level_1n2' will exit, by default, if the old products already
+   exist. Added option '-remove_old_products'.
+8. 'all_tape_level_1' will exit if the input dir.'s name is the same as the
+   output directori(es)' name.
+9. Fixed bug w.r.t. disk space checking.
+10. Added scripts: hdf2img_for_dir and hdf2img.
+11. all_tape* use different default working and temp dirs; contain new options
+    (-not_compress, -max_vos_per_granule number, -alternative_working_dirs_file,
+	-alternative_top_output_dirs_file,-qc_dirs_file, -csmap_dirs_file, 
+    -rrmap_dirs_file, and -t top_tmp_dir); and
+    have the capability to switch to an alternative file system when 
+    the current file system is full.
+12. Changed 'change_perl_path' to 'install_scripts' in the makefile
+
+
+v3.0 (1/6/97)
+--------------
+1. Minor mod. in the Makefile
+2. Changed all_tape_level_1n2 to use new products' naming convention.
+3. Changed all_tape_level_1 w.r.t. changes in level_1's options and 
+   product compression.
+4. Must use GVS version 3.3 and above.
+
+v2.0 (12/12/96)
+--------------
+1. Added 'all_tape*'. 'all_tape*' are compatible with gvs v3.2.
+2. Added 'all_tapes' and 'all_cd'.
+
+v1.1 (7/19/96)
+--------------
+1. Minor mods to aiwII_level2
+2. New level2_darwin.csh for parameters to 2A-53-d -- parameters
+   delevered to TO on 7/18/96.  Used for AIW-II processing.
+
+v1.0 (7/10/96)
+--------------
+1. Initially created.
+2. Compatible with GVS v3.*.

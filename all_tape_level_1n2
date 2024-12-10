@@ -1,0 +1,3677 @@
+#! /usr/bin/perl 
+#-*-Perl-*-
+#
+#
+# This script runs GVS's level I and/or level II products for the
+# whole set of data (usually one tape) from any site residing on disk, tape,
+# or CD. Note: 2A-53-w can only process data from Melbourne and Darwin.
+
+# Output files from level I are kept on disk and used as inputs to level II 
+# products.  This enables us to skip tape I/O betweeen level I and level II.  
+#
+# Any product or any combinations of products from level I & II can be
+# specified.  
+#
+# A directory (gvs_<product>_<tapeid>) for each product will be created, and 
+# product's options file will be copied to this directory named 'options'
+# to keep our work separated from any other one of these scripts that may 
+# be running for another tape device. 
+#
+# Use options '[-alternative_working_dirs_file filename]' and
+#       '[-alternative_top_output_dirs_file filename]' if you want  
+#       this script to continue processing using an alternative file system when the
+#       file system of the working dir or of the top output dir is full. 
+#       If no alternative directory is available 
+#       or specified, this script will stop processing.
+#
+#       Note: the warning message below applies to the alternative dirs
+#       as well--This checking will be done before processing begins
+#
+# Warning: If this directory exists, this script will not continue but stop
+# by default; specify option, -remove_old_products, if you want it to be removed 
+# automatically.
+#
+# In constructing product's filename to use as output and/or input to a
+# program, this script will use the version numbers defined
+# in a file which is specfied on the command line or 
+# '$GVS_DATA_PATH/products_version_numbers' by default -- If GVS_DATA_PATH is 
+# not defined, then it will be '/user/nguyen/tmp/gvs/data/products_version_numbers'
+#
+# This file has the following format, where comment line starts with '--':
+# -- [Product]  [Output Version #]  [Input Version #]
+#	1B-51 			1					 0
+#    .
+#    .
+#    .
+#
+# FEATURES:
+#
+#   1. Can process level 1 and level 2 for an entire data set.
+#   2. Can run level 1 from tape, CD, or disk.  When data is from CD or disk,
+#      type 'all_tape_level_1' to see NOTES w.r.t. file naming convention.
+#   3. Can run any number of products.
+#   4. Input data for level 2 is from disk.
+#   5. By default, level II products are processed at single vos level --
+#      this runs faster. Specify '-g' to have level II products processed 
+#      at hour-granule level.
+#   6. Program is able to skip raw input files and start executing with 
+#    the user's specified start file. This applies to level I only.
+#
+#      
+# EXAMPLES:
+#
+#   1. all_tape_level_1n2 /dev/8mm1 tape01 level_1 level1.opt
+#      a. Run only level 1 algorithm (1C and/or 1B is specified in level1.opt
+#         i.e. -c 1C-51  -b 1B-51) reading the data from /dev/8mm1.
+#      b. The tape id is 'tape01'.
+#      c. The directory created is 'gvs_level_1_tape01'.  In that directory
+#         files 1C-51/1C51.<YYMMDD>.<granule#>.<site>.<version#>.HDF are 
+#         created, 
+#         where:
+#         YYMMDD is the date of data; granule# is granule number; site is
+#         4-char radar site name; version# is version number
+#         of the TSDIS algorithm.
+#      d. The options are listed in the file 'level1.opt'.  Typically,
+#         it only contains '-v' when one interests in 1C-51 product only.  
+#         All options are listed on one line.
+#
+#   2. all_tape_level_1n2 disk W93-01 2A-53-d 2A-53-d.opt
+#      a. The device is not necessary and can be anything.
+#      b. The tape id is 'W93-01'
+#      c. Look for data in the directory gvs_level1_W93-01/1C-51.
+#      d. Create directory gvs_2A-53-d_W93-01 and place all output there.
+#
+#   3. all_tape_level_1n2 disk W93-01 level_1 level1.opt
+#      a. The input data is already on disk.  Specified by 'disk' for
+#         input tape device.
+#      b. Type 'all_tape_level_1' to see input file naming convention.
+#      c. All input files reside in the current directory.  They can be
+#         gzip-ed.  But, no .gz extension.
+#      d. The directory gvs_level_1_W93-01 will be created.
+#
+#
+# SPECIAL REQUIREMENTS:
+# 
+# '2A-53-w' - Read src/2A-53/witek/README in section EXECUTION NOTES.
+#
+# '2A-53-d' - Read src/2A-53/danny/README in section EXECUTION NOTES.
+
+# '2A-53-v4' - Read src/2A-53/ver4/README in section EXECUTION NOTES.
+#
+# '2A-54'   - Read src/2A-54/README in section EXECUTION NOTES.
+#
+# '2A-55'   - Read src/2A-55/README in section EXECUTION NOTES.
+#
+# Have access to the following programs:
+#   'level_1_ghdf_to_singlevos_uf', 'all_tape_level_1', '2A-53', '2A-54', '2A-55',
+#   'level_2_singlevos_hdf_to_ghdf', 'level_2_ghdf_to_singlevos_hdf', 'send_status' (optional),
+#   and 'mail' (UNIX).
+#
+# Notes:
+#
+# 1. Option file contains product's options listed in one line and ends with a 
+#    newline character. 
+#
+# 2. This script can read data from disk, from CD, or from tape since 
+#    it calls 'all_tape_level_1', which can handle reading data from 
+#    those devices.   Type 'all_tape_level_1' to see file naming convention
+#    for input data being used by the script.
+#
+# 3. Exit code: 
+#               -2 -- ($INTER_CODE)Program was aborted by '^C'.
+#               -1 -- ($SEVERE_ERROR_CODE) When there is failure.
+#                0 -- ($SUCCESS_CODE)Everything is successful.
+#                2 -- ($OUT_OF_SPACE_CODE) There is not enough space to continue.
+#
+#
+# #############################################################################
+# #############################################################################
+#
+# By: John H. Merritt
+#     NASA/TRMM Office
+#     Applied Research Corporation
+#     john.h.merritt@gsfc.nasa.gov
+#
+#             and
+#
+#     Ngoc-Thuy T. Nguyen
+#     Science Systems & Applications Inc.
+#     NASA/TRMM Office
+#     Thuy.Nguyen@gsfc.nasa.gov
+#
+#     Copyright 1995-1998
+#
+#############################################################################
+$test_count = 1;
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'all_tape_common.pl';
+
+$verbose = 0;               # Verbose printing of progress.
+$yes_send_mail = 1;         # By default, the script will send to the job 
+                            # subscriber a mail
+                            # message when the system runs out of disk space
+                            # and when program exits.
+
+$DEBUG = 0;	# set to 1 for debug output
+
+%metadata_file_opts = (); # -m metadatafile for each product if it's in optfile
+
+# defining some global variables
+
+#NEW added prods/execs
+
+%programs = (
+#  PRODUCT     EXECUTABLE  -- The product doesn't have to be the same
+#                             as the executable.
+   'level_1',  'all_tape_level_1',
+   '2A-53-w',  '2A-53',
+   '2A-53-d',  '2A-53',
+   '2A-53-c',  '2A-53',
+   '2A-53-v4', '2A-53',
+   '2A-53-dc', '2A-53',
+   '2A-54',    '2A-54',
+   '2A-54-dc', '2A-54-dc',
+   '2A-55',    '2A-55',
+   '2A-55-dc',  '2A-55'
+			 );
+
+
+%singlevos_programs = (
+#  PRODUCT     EXECUTABLE  -- The product doesn't have to be the same
+#                             as the executable.
+   '2A-53-w',  'singlevos_2A-53-w',
+   '2A-53-d',  'singlevos_2A-53-d',
+   '2A-53-c',  'singlevos_2A-53-c',
+   '2A-53-v4', 'singlevos_2A-53-v4',
+   '2A-53-dc', 'singlevos_2A-53-dc',
+   '2A-54',    'singlevos_2A-54',
+   '2A-54-dc', 'singlevos_2A-54-dc',
+   '2A-55',    'singlevos_2A-55',
+   '2A-55-dc', 'singlevos_2A-55'
+			 );
+
+
+@active_prods_list = ();
+
+$granule_type = "GRANULE";
+$vos_type = "VOS";
+$degranulize = "DEGRANULIZE";
+$run_prod = "RUNPROD";
+$uncompress = "UNCOMPRESS";
+
+# Products' file extentions
+$ghdf_file_ext = "HDF";
+$shdf_file_ext = "hdf";
+$uf_file_ext = "uf";
+
+$tapeid = "";
+$device = "";
+$prod_processed_num = 1;  # Default.  Number of time this product is being 
+                          # processed--or num of reprocessed.
+
+# Input file types
+$unknown_type = "";
+$qc_type    = "qc";
+$csmap_type = "csmap";
+
+#NEW
+$csmap_dc_type = "csmap_dc";
+$gridded_refl_dc_type = "gridded_refl_dc";
+
+# Set default values
+$version_fname = "$gvs_data_path/products_version_numbers";  # Default
+
+
+$tape_has_no_header_file = 0;
+$header_file_num = 0;
+$first_data_file_num = 1;
+
+$alter_top_output_dirs_fname = "";
+$alter_top_working_dirs_fname = "";
+@alter_top_working_dirs = ();
+@alter_top_output_dirs = ();
+$alter_top_output_dirs_option_str = "";
+$alter_top_working_dirs_option_str = "";
+
+# save dirs lists
+@save_alter_top_working_dirs = @alter_top_working_dirs;
+@save_alter_top_output_dirs = @alter_top_output_dirs;
+
+$this_prog_dirname = "alltapel12_$$/";
+
+$top_working_dir_prefix = $save_curr_dir;
+# $top_working_dir_prefix2 should be the most top dir. where 
+# working, tmp dirs are under.
+# 
+$top_working_dir_prefix2 = "$top_working_dir_prefix$this_prog_dirname";
+$top_working_dir_suffix = $this_prog_dirname."working/";
+$top_working_dir = "";
+
+$top_output_dir = $save_curr_dir;
+$level2_top_input_dir = $save_curr_dir;
+$raw_dir = $save_curr_dir;
+
+$top_tmp_dir_prefix = "";    # should be $top_working_dir_prefix
+$top_tmp_dir_suffix = $this_prog_dirname;
+$top_tmp_dir = "";           # should be $top_tmp_dir_prefix$top_tmp_dir_suffix
+
+#do create_dir($top_tmp_dir, 0, 0);  ???
+
+# Will use either *_dir or *_dirs_file, but not both
+$qc_dir = "";
+@qc_dirs = ();
+$csmap_dir = "";
+$qc_dirs_file = "";
+$csmap_dirs_file = "";
+
+#NEW
+$csmap_dc_dir = "";
+$csmap_dc_dirs_file = "";
+
+# For 2A-55 - automatically set to true if dual-cappi-csmap not available
+$use_pseudo_cappi = 0;
+
+
+$run_level2_at_singlevos = 1;     # 1 - Run level2 at single vos level.
+                                  # 0 - Run level2 at hourly granule level.
+$verbose_opt = "-v";
+$start_raw_file  = "";            # Applies to raw radar files only--not UF
+$start_qc_file  = "";
+$start_csmap_file  = "";
+$last_raw_file  = "";             # Applies to raw radar files only--not UF
+$last_qc_file  = "";
+$last_csmap_file  = "";
+
+#NEW
+$start_csmap_dc_file = "";
+$last_csmap_dc_file = "";
+$start_gridded_refl_dc_file = "";
+$last_gridded_refl_dc_file = "";
+
+# Process arguments and set up the environment.  It sets which products
+# are specified.
+@save_prog_cmd = @ARGV;
+$hdf2uf_jobnum = 0;
+$ghdf2shdf_jobnum = 0;					
+$zr_table_full_fname = "";
+$zr_table_fname = "";       # no pathname
+#NEW
+$dc_zr_table_full_fname = "";
+$dc_zr_table_fname = "";       # no pathname
+$remove_old_products = 0;
+$do_compress_level1 = 1;    # Default, compress level1 prods as they become
+                            # full-granule files. Compression works correctly 
+                            # only if the input files are coming in the right
+                            # timely order (data time, not file time stamp).
+
+$min_required_dkspace = 0; # In blocks
+
+$help = 0;
+@csmap_list = ();
+
+#NEW
+@csmap_dc_list = ();
+@gridded_refl_dc_list = ();
+
+@csmap_shdf_file_list = ();
+
+#NEW
+@csmap_dc_shdf_file_list = ();
+@gridded_refl_dc_file_list = ();
+
+@dirs_to_be_removed = ();
+$option_filename = "options";
+$max_num_raw_files_per_hour = 0; 
+
+$not_report_monitorps = 0;  # Default: yes, send msg to monitorps and 
+                            # images monitor_product.
+$update_inventory_db = 0;   # Not send information to 'gvi_db'.
+
+do process_args (@ARGV);
+print STDERR "This program is: $0\n" if($verbose);
+print STDERR "Version: $PROG_VERSION\n";
+
+print STDERR "$this_prog: Will not send status messages and products to monitorps and monitor_product.\n" if ($not_report_monitorps == 1 && $verbose);
+
+
+
+# Check if working dir is readable/writable.
+if (!(-d $top_working_dir && -w $top_working_dir && -r $top_working_dir)) {
+	print STDERR "$0: Error: Working dir <$top_working_dir> is not a readable/writeable directory.\n";
+	do do_exit($SEVERE_ERROR_CODE);
+}
+
+# Check if top output dir is readable/writable.
+if (!(-d $top_output_dir && -w $top_output_dir && -r $top_output_dir)) {
+	print STDERR "$0: Error: Working dir <$top_output_dir> is not a readable/writeable directory.\n";
+	do do_exit($SEVERE_ERROR_CODE);
+}
+
+# Set default.
+
+$dir_level1_suffix = &get_dir_name("level_1", $tape_id);
+$dir_1C51_suffix1 = "1C-51/";
+$dir_1C51_UF_suffix1 = "UF/";
+$dir_1B51_suffix1 = "1B-51/";
+$dir_1B51_suffix2 = $dir_level1_suffix;
+$dir_1C51_suffix2 = $dir_level1_suffix;
+$dir_1C51_UF_suffix2 = $dir_level1_suffix;
+$dir_1C51_suffix = $dir_1C51_suffix2.$dir_1C51_suffix1;
+$dir_1B51_suffix = $dir_1B51_suffix2.$dir_1B51_suffix1;
+$dir_1C51_UF_suffix = $dir_1C51_UF_suffix2.$dir_1C51_UF_suffix1;
+$dir_2A54_suffix = &get_dir_name("2A-54", $tape_id);
+
+#NEW
+$dir_2A54_dc_suffix =  &get_dir_name("2A-54-dc", $tape_id);
+$dir_2A55_dc_suffix =  &get_dir_name("2A-55-dc", $tape_id);
+
+
+$full_path_dir_1C51 = $top_output_dir.$dir_1C51_suffix;
+$full_path_dir_1B51 = $top_output_dir.$dir_1B51_suffix;
+if ($product_list{'level_1'} == 0) {
+	# Assumes 1C-51 products exist.
+    # Use user's specified dirs, if applicable.
+	$full_path_dir_1C51 = $qc_dir if $qc_dir ne "";
+}
+
+# Full pathnames
+$dir_2A54 = $level2_top_input_dir.$dir_2A54_suffix;
+$outdir_2A54 = $level2_top_input_dir.$dir_2A54_suffix;
+
+#NEW
+$dir_2A54_dc =  $level2_top_input_dir.$dir_2A54_dc_suffix;
+$outdir_2A54_dc = $level2_top_input_dir.$dir_2A54_dc_suffix;
+
+$dir_2A55_dc =  $level2_top_input_dir.$dir_2A55_dc_suffix;
+$outdir_2A55_dc =  $level2_top_input_dir.$dir_2A55_dc_suffix;
+
+
+# Use user's specified dirs, if applicable.
+# Full pathnames
+$dir_2A54 = $csmap_dir if ($csmap_dir ne "" && 
+			   $product_list{'2A-54'} == 0);
+$csmap_dir = $dir_2A54 if ($csmap_dir eq "" && $csmap_dirs_file eq "");
+$qc_dir = $full_path_dir_1C51 if ($qc_dir eq "" && $qc_dirs_file eq "");
+
+#NEW
+$dir_2A54_dc = $csmap_dc_dir if ($csmap_dc_dir ne "" &&
+				 $product_list{'2A-54-dc'} == 0);
+$csmap_dc_dir = $dir_2A54_dc if ($csmap_dc_dir eq "" && $csmap_dc_dirs_file eq "");
+
+
+$dir_2A55_dc = $gridded_refl_dc_dir if ($gridded_refl_dc_dir ne "" && 
+					$product_list{'2A-55-dc'} == 0);
+
+$gridded_refl_dc_dir = $dir_2A55_dc if ($gridded_refl_dc_dir eq "" && $gridded_refl_dc_dirs_file eq "");
+
+@save_top_tmp_dirs = ();
+$save_top_output_dir = $top_output_dir;
+chdir $top_working_dir;   
+
+
+
+#
+# Process all level 1 (1B and/or 1C) before any level 2. 
+# run_level1 will reset $full_path_dir_1C51 if it is specified in the option file.
+do run_level1('level_1') if $product_list{'level_1'} == 1;
+
+
+# Process level 2 products
+# Note: 
+#    The order of executions for products are relevant because:
+#        2A-53-w, 2A-53-d, 2A-53-c, 2A-53-v4, 2A-55 require 
+#             2A-54 and 1C-51.
+#        2A-54 requires 1C-51.
+#    
+	
+# This list should contain the same 'keys' as %programs, however,
+# how do I get this order?  'keys()' returns a random order.
+# Note: @process_order will be used by subroutines.
+	
+#NEW
+@process_order = ('2A-55-dc', '2A-54-dc', '2A-53-dc','2A-54', '2A-53-w', '2A-53-d',  '2A-53-c',  '2A-53-v4', '2A-55');
+	
+@active_prods_list = &select_active_products(@process_order);
+
+print STDERR "DEBUG: @active_prods_list\n" if $DEBUG;
+
+do run_level2() if &level2_product_specified() == 1;
+
+SKIP_PROC_LEVEL2:
+
+do clean_up();  # remove look up tables, etc. 
+
+print STDERR "$this_prog: Done.\n" if($verbose);
+
+do do_exit ($SUCCESS_CODE);
+
+##########################################################################
+##########################################################################
+############################## Subroutines ###############################
+##########################################################################
+##########################################################################
+sub usage {
+	print STDERR "\nGround Validation Production Automation Program.\n" if ($help);
+	print STDERR " Usage ($PROG_VERSION)\n";
+	print STDERR "    $this_prog device tape_id [options] product product_options_file\n";
+	print STDERR "\t\t   [product product_options_file]...\n";
+	print STDERR "\n";
+	print STDERR "    where,\n";
+	print STDERR "     [options] := \n";
+	print STDERR "\t\t[-g] [-help] [-w working_dir]\n";
+	print STDERR "\t\t[-v (verbose)]\n";
+
+
+	print STDERR "\t\t[-not_report_monitorps]\n";
+#    print STDERR "\t\t[-update_inventory_db [-product_processed_num number] ]\n";
+	print STDERR "\t\t[-max_num_raw_files_per_hour number]\n";
+	print STDERR "\t\t[-start_raw_file  {filename|file_sequential_num}] \n";
+	print STDERR "\t\t[-start_qc_file filename] \n";
+	print STDERR "\t\t[-start_csmap_file filename]\n";
+	print STDERR "\t\t[-start_csmap_dc_file filename]\n";
+	print STDERR "\t\t[-start_gridded_refl_dc_file filename]\n";
+	print STDERR "\t\t[-last_raw_file {filename|file_sequential_num}] \n";
+	print STDERR "\t\t[-last_qc_file filename]\n";
+	print STDERR "\t\t[-last_csmap_file filename]\n";
+	print STDERR "\t\t[-last_csmap_dc_file filename]\n";
+	print STDERR "\t\t[-last_gridded_refl_dc_file filename]\n";
+	print STDERR "\t\t[-raw_dir       input_dir]  \n";
+	print STDERR "\t\t[-qc_dir        input_dir  | -qc_dirs_file    filename] \n";
+	print STDERR "\t\t[-csmap_dir     input_dir  | -csmap_dirs_file filename]\n";
+	print STDERR "\t\t[-csmap_dc_dir     input_dir  | -csmap_dc_dirs_file filename]\n";
+	print STDERR "\t\t[-i levelII_top_input_dir]  [-o top_output_dir]\n";
+	print STDERR "\t\t[-versions_file filename]   [-remove_old_products]\n";
+	print STDERR "\t\t[-do_not_send_mail]         [-not_compress_level1]\n";
+	print STDERR "\t\t[-alternative_working_dirs_file    filename]\n";
+	print STDERR "\t\t[-alternative_top_output_dirs_file filename]\n";
+	print STDERR "\t\t[-tape_has_no_header_file | -header_file_number number]\n";
+	print STDERR "\t\t[-first_data_file_number number]\n";
+	print STDERR "\n";
+   	print STDERR "\tproduct              = level_1 | 2A-53-w | 2A-53-d |\n";
+	print STDERR "\t                       2A-53-c | 2A-53-v4 | 2A-54 | 2A-55 |\n";
+	print STDERR "\t                       2A-53-dc | 2A-54-dc | 2A-55-dc\n";
+    print STDERR "\tproduct_options_file = ~/test/2A-54.opts, 2A-53.options, etc...\n";
+	print STDERR "\n";
+	do do_exit ($SEVERE_ERROR_CODE) if ($help == 0);
+
+
+	print STDERR " Descriptions:\n";
+    print STDERR "\tdevice             = disk, CD, /dev/8mm1, /dev/8mm2, etc.\n";
+    print STDERR "\ttape_id            = The physical label. Ex. TAPE0001.\n";
+	print STDERR "\t-g                 : Run level II at hour-granule level. Default is to\n";
+	print STDERR "\t                     run at single vos level. Processing single VOSes \n",
+	             "\t                     is more time efficient. \n";
+	print STDERR "\t-help              : Will show this list.\n";
+
+	print STDERR "\t-w                 : Specify working directory. Default = `pwd`.\n";
+	print STDERR "\t-not_report_monitorps:\n",
+	"\t                     Do not send status messages to monitorps and images to monitor_product.\n";
+#	print STDERR "\t-update_inventory_db:\n",
+#	             "\t                    Yes, add information (tape, product, files,...) to the inventory DB.\n",
+#	             "\t                    Inventory info. may be looked up via a GUI program, 'xgvics'.\n";
+#	print STDERR "\t-product_processed_num:\n",
+#	             "\t                    Specify the number for reprocesses. Default: 1.\n",
+#	             "\t                    This is used if -update_inventory_db was specified.\n";
+	print STDERR "\t-max_num_raw_files_per_hour : \n",
+	             "\t                     Specify the maximum number of raw input files  \n",
+                 "\t                     per hour.  This will only be used to determine \n",
+                 "\t                     when to compress level1 products.  Default: 20.\n";
+	print STDERR "\t-start_raw_file    : Specify raw radar or UF file's name or sequential\n",
+                 "\t                     number (non-UF file only) to start processing level 1 at. \n",
+	             "\t                     Type 'all_tape_level_1' to see more detail in the Note section.\n";
+	print STDERR "\t-start_qc_file     : Specify QC filename (granuled HDF) to start processing level 2 at.\n";
+	print STDERR "\t-start_csmap_file  : Specify csmap filename (granuled HDF) to start processing level 2 at.\n";
+
+
+#NEW
+
+	print STDERR "\t-start_csmap_dc_file  : Specify dual-cappi csmap filename (granuled HDF) to start processing level 2 dual-cappi at.\n";
+	print STDERR "\t-start_gridded_refl_dc_file  : Specify gridded refl. filename (granuled HDF) to start processing level 2 dual-cappi at.  (for dual-cappi products)\n";
+	print STDERR "\t-last_raw_file     : Specify the last raw radar or UF file's name or\n",
+                 "\t                     sequential number (non-UF file only) to be processed.\n",
+	             "\t                     Type 'all_tape_level_1' to see more detail in the Note section.\n";
+	print STDERR "\t-last_qc_file      : Specify the last QC filename (granuled HDF) \n",
+                 "                       to be processed by level 2.\n";
+	print STDERR "\t-last_csmap_file   : Specify the last csmap filename (granuled\n",
+                 "\t                     HDF) to be processed by level 2.\n";
+	print STDERR "\t-last_csmap_dc_file   : Specify the last dual-cappi csmap filename (granuled\n",
+                 "\t                     HDF) to be processed by level 2.\n";
+	print STDERR "\t-last_gridded_refl_dc_file   : Specify the last gridded refl. filename (granuled\n",
+                 "\t                     HDF) to be processed by level 2. (For dual-cappi products.)\n";
+	print STDERR "\t-raw_dir           : Specify directory for raw radar data or UF data. Default = `pwd`.\n",
+    "\t                     Specify this if data files are not from tape.\n";
+
+	print STDERR "\t-qc_dir            : Specify qc data directory. \n",
+	"\t                     Default = \"\$top_input_dir/gvs_level_1_<tapeid>\". \n",
+	"\t                     Specified this if 1C-51 products (granuled HDF files) exist.\n";
+	print STDERR "\t-qc_dirs_file      : Specify filename that contains a list of dirs\n",
+	             "\t                     of qc data. Default: \"\".\n",
+              	 "\t                     Specify this if 1C-51 products (granuled HDF files) exist in several dirs.\n";
+
+	print STDERR "\t-csmap_dir         : Specify csmap data directory. \n",
+	"\t                     Default = \"\$top_input_dir/gvs_2A-54_<tapeid>\". \n",
+	"\t                     Specify this if 2A-54 products (granuled HDF files) exist.\n";
+	print STDERR "\t-csmap_dirs_file     : Specify filename that contains a list of dirs\n",
+	             "\t                     of csmap data. Default: \"\".\n",
+	             "\t                     Specify this if 2A-54 products (granuled HDF files) exist in several dirs.\n";
+	print STDERR "\t-i                 : Specify level II top input directory where \n",
+	"\t                     gvs_<product>_<tapeid>s are under. Default = `pwd`.\n";
+	print STDERR "\t-o                 : Specify top output directory where \n",
+	"\t                     gvs_<product>_<tapeid>s will be created under. \n",
+	"\t                     Default = `pwd`.\n";
+	print STDERR "\t-versions_file :     Specify filename that contains TSDIS products' \n";
+	print STDERR "\t                     version numbers. \n";
+	print STDERR "\t                     Default = \$GVS_DATA_PATH/products_version_numbers\n";
+	print STDERR "\t-remove_old_products: Yes, remove the existing directori(es) \n",
+                 "\t                     <\$top_output_dir/gvs_<product>_<tapeid>.\n",
+                 "\t                     Default: Program will exit.\n";
+	print STDERR "\t-do_not_send_mail  : Do not send a mail message to the production\n",
+                 "\t                     submitter. Default: This program will send a\n",
+                 "\t                     mail message in the following cases: (1) When\n",
+                 "\t                     the file system of the working dir. or\n",
+                 "\t                     of the top output dir. runs out of disk space\n",
+	             "\t                     and/or (2) When the program exits.\n";
+	print STDERR "\t-not_compress_level1:Do not compress level1 products. Use this option \n",
+	             "\t                     when the raw files are not listed in the increaing \n",
+	             "\t                     order of data-time.\n";
+	print STDERR "\t-alternative_working_dirs_file : \n",
+                 "\t                     Specify filename that contains a list of\n",
+                 "\t                     alternative working directories (full pathnames) to be used \n",
+                 "\t                     when the system runs out of disk space.\n";
+	print STDERR "\t-alternative_top_output_dirs_file : \n",
+	             "\t                     Specify filename that contains a list\n",
+                 "\t                     of alternative top ouput directories (full\n",
+    	         "\t                     pathname) to be used when the system runs out \n";
+                 "\t                     of disk space.\n";
+	print STDERR "\t-tape_has_no_header_file:\n",
+	             "\t                    Specify this flag if the first file is data file. This applies to non-berrimah data.\n";
+	print STDERR "\t-header_file_number:\n",
+        	     "\t                    Specify file number of the tape header file. Default: 0.\n";
+
+
+	print STDERR "\t-first_data_file_number:\n",
+	             "\t                    Specify file number of the first raw data file. Default: 1.\n";
+
+	print STDERR "\n";
+
+	print STDERR "\tproduct_options_file = File contained one line of product's options.\n";
+	print STDERR "\n NOTE:\n";
+	print STDERR "   1. Type 'all_tape_level_1' and see the NOTES section for raw input data\n";
+	print STDERR "      files' naming convention.\n"; 
+
+	print STDERR "\n   2. Each option file contains product's options, listed in one line.\n";
+	print STDERR "      For level_1, this script will replace '-c $dir -b $dir -u $dir' with\n";
+	print STDERR "      '-c gvs_level_<tapeid>/1C-51 -b gvs_level_<tapeid>/1B-51 -u gvs_level_<tapeid>/UF'.\n";
+
+	print STDERR "\n   3. This script will create \$top_output_dir/gvs_<product>_<tapeid> for each\n";
+	print STDERR "      specified product and store its result there.\n";
+	print STDERR "\n   4. Set the environment variable, GVS_DATA_PATH, to where the GVS' data is \n",
+                 "      installed.\n";
+	print STDERR "\n   5. Set the environment variable, TSDISTK, to where the TSDIS toolkit is\n",
+                 "      installed.\n";
+	print STDERR "\n   6. For level II, by default, level II products are processed one VOS at\n",
+	             "      a time; the granule input products are first degranulized. The algorithm\n",
+                 "      programs take a single VOS product as input; thus, the script will send\n",
+                 "      status messages for the singlevos processing. In contrast, specify '-g'\n",
+                 "      to process level II using hourly granules as inputs to the algorithm \n",
+                 "      programs; thus, the script will send a status message of processing of\n",
+	             "      each granule file.\n";
+	print STDERR "\n";
+    exit $SEVERE_ERROR_CODE;
+}
+
+
+
+sub process_args {
+	local(@arglist) = @_;
+
+	if ($#arglist < 3) {
+		$help = 1 if ($arglist[0] eq "-help");
+		do usage();
+	}
+
+	$device  = shift @arglist;
+	$tape_id = shift @arglist;
+
+
+	if ($device =~ /^-/ || $tape_id =~ /^-/) {
+		do usage();
+	}
+	local($product) = "";
+	local($str);
+	while ($#arglist >= 0) {
+		$str = shift @arglist;
+
+		if ($str eq "-g") {
+			if ($product ne "") {
+				do usage();
+			}
+			$run_level2_at_singlevos = 0;
+			next;
+		}
+		elsif ($str eq "-v") {
+			usage() if ($product ne "");
+			$verbose = 1;
+			next;
+		}
+		elsif ($str eq "-not_report_monitorps") {
+			if ($product ne "") {
+				do usage();
+			}
+			$not_report_monitorps = 1;
+			next;
+		}
+		elsif ($str eq "-help") {
+			if ($product ne "") {
+				do usage();
+			}
+			$help = 1;
+			do usage();
+		}
+		elsif ($str eq "-do_not_send_mail") {
+			if ($product ne "") {
+				do usage();
+			}
+			$yes_send_mail = 0;
+			next;
+		}
+		elsif ($str eq "-update_inventory_db") {
+			if ($product ne "") {
+				do usage();
+			}
+			$update_inventory_db = 1;
+			next;
+		}
+		elsif ($str eq "-not_compress_level1") {
+			if ($product ne "") {
+				do usage();
+			}
+			$do_compress_level1 = 0;
+			next;
+		}
+
+		elsif ($str eq "-remove_old_products") {
+			if ($product ne "") {
+				do usage();
+			}
+			$remove_old_products = 1;
+			next;
+		}
+		elsif ($str eq "-product_processed_num") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+	
+			$prod_processed_num = $tmp_str;
+
+			next;
+		}
+		elsif ($str eq "-raw_dir") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+	
+			$raw_dir = &change2absolute_dir($tmp_str);
+
+			next;
+		}
+		elsif ($str eq "-max_num_raw_files_per_hour") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+	
+			$max_num_raw_files_per_hour = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-qc_dirs_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$qc_dirs_file = &create_absolute_fname($tmp_str);
+			next;
+		}
+		elsif ($str eq "-csmap_dirs_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$csmap_dirs_file = &create_absolute_fname($tmp_str);
+			next;
+		}
+
+		elsif ($str eq "-qc_dir") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$qc_dir = &change2absolute_dir($tmp_str);
+			next;
+		}
+		elsif ($str eq "-csmap_dir") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$csmap_dir = &change2absolute_dir($tmp_str);
+			next;
+		}
+
+#NEW
+		elsif ($str eq "-gridded_refl_dc_dir") {
+ 		    if ($product ne "") {
+			do usage();
+		    }
+		    local($tmp_str) = shift @arglist;
+		    do usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+		    $gridded_refl_dc_dir = &change2absolute_dir($tmp_str);
+		    next;
+		}
+		elsif ($str eq "-gridded_refl_dc_dirs_file") {
+		    if ($product ne "") {
+			do usage();
+		    }
+		    local($tmp_str) = shift @arglist;
+		    do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+		    $gridded_refl_dc_dirs_file = &create_absolute_fname($tmp_str);
+		    next;
+		}
+		elsif ($str eq "-csmap_dc_dir") {
+		    if ($product ne "") {
+			do usage();
+		    }
+		    local($tmp_str) = shift @arglist;
+		    do usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+		    $csmap_dc_dir = &change2absolute_dir($tmp_str);
+		    next;
+		}
+		elsif ($str eq "-csmap_dc_dirs_file") {
+		    if ($product ne "") {
+			do usage();
+		    }
+		    local($tmp_str) = shift @arglist;
+		    do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+		    $csmap_dc_dirs_file = &create_absolute_fname($tmp_str);
+		    next;
+		}
+		elsif($str eq "-start_csmap_dc_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$start_csmap_dc_file  = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-last_csmap_dc_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$last_csmap_dc_file  = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-start_gridded_refl_dc_file") {
+		    if ($product ne "") {
+			do usage();
+		    }
+		    local($tmp_str) = shift @arglist;
+		    do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+		    $start_gridded_refl_dc_file  = $tmp_str;
+		    next;
+		}
+		elsif ($str eq "-last_gridded_refl_dc_file") {
+		    if ($product ne "") {
+			do usage();
+		    }
+		    local($tmp_str) = shift @arglist;
+		    do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+		    $last_gridded_refl_dc_file  = $tmp_str;
+		    next;
+		}
+		elsif ($str eq "-start_raw_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$start_raw_file  = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-start_qc_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$start_qc_file  = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-start_csmap_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$start_csmap_file  = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-last_raw_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$last_raw_file  = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-last_qc_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$last_qc_file  = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-last_csmap_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$last_csmap_file  = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-w") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$top_working_dir_prefix = &change2absolute_dir($tmp_str);
+			next;
+		}
+		elsif ($str eq "-o") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$top_output_dir = &change2absolute_dir($tmp_str);
+			next;
+		}
+		elsif ($str eq "-i") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			$level2_top_input_dir = &change2absolute_dir($tmp_str);
+			next;
+		}
+		elsif ($str eq "-versions_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			# Turn it to absolute path and remove the last '/'.
+			($version_fname = &change2absolute_dir($tmp_str)) =~ s/\/$//;
+			next;
+		}
+		elsif ($str eq "-alternative_working_dirs_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			local($absolute_fname) = &create_absolute_fname($tmp_str);
+			$alter_top_working_dirs_fname = $absolute_fname;
+			$alter_top_working_dirs_option_str = "-alternative_working_dirs_file $alter_top_working_dirs_fname";
+			next;
+		}
+		elsif ($str eq "-alternative_top_output_dirs_file") {
+			if ($product ne "") {
+				do usage();
+			}
+			local($tmp_str) = shift @arglist;
+			do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+			local($absolute_fname) = &create_absolute_fname($tmp_str);
+			$alter_top_output_dirs_fname = $absolute_fname;
+			$alter_top_output_dirs_option_str = "-alternative_top_output_dirs_file $alter_top_output_dirs_fname";
+			next;
+		}
+		elsif ($str eq "-tape_has_no_header_file") {
+			do usage() if ($header_file_num > 0);
+			$tape_has_no_header_file = 1;
+			next;
+		}
+		elsif ($str eq "-header_file_number") {
+			do usage() if ($tape_has_no_header_file);
+
+			local($tmp_str) = shift @arglist;
+			do usage() if ($tmp_str =~ /^\-/);
+			$header_file_num = $tmp_str;
+			next;
+		}
+		elsif ($str eq "-first_data_file_number") {
+			local($tmp_str) = shift @arglist;
+			do usage() if ($tmp_str =~ /^\-/);
+			$first_data_file_num = $tmp_str;
+			next;
+		}
+		# No more option can come after product
+
+		(print STDERR "$this_prog: Expects product but gets $str\n" && 
+		 do  usage()) if ($str =~ /^\-/);
+
+
+		$product = $str;
+		local($tmp_str) = shift @arglist;
+		(print STDERR "$this_prog: Option file is not specified for $product\n" && do usage()) if ($tmp_str eq "");
+		$options_file = $tmp_str;
+
+
+		if ($programs{$product} eq "") {
+			print STDERR "$this_prog: Error: Product $product is unknown.\n";
+			do do_exit($SEVERE_ERROR_CODE);
+		}
+
+		if (! (-e $options_file)) {
+			print STDERR "$this_prog: Option file <$options_file> does not exist.\n";
+			do do_exit($SEVERE_ERROR_CODE);
+		}
+		$product_list{$product} = 1;
+
+
+		$options_list{$product} = &get_options_from_file($options_file);
+		if ($options_list{$product} =~ /-m\s+\S+/) {
+			($metadata_file_opts{$product} = $options_list{$product}) =~
+				/(-m\s+\S+)/;
+		}
+
+		# Set default for dirs.
+		$top_working_dir = "$top_working_dir_prefix$top_working_dir_suffix" if ($top_working_dir eq "");
+		do create_dir ($top_working_dir, 0, 1);
+		
+		$top_tmp_dir_prefix = $top_working_dir_prefix;
+		$top_tmp_dir = "$top_tmp_dir_prefix$top_tmp_dir_suffix";
+
+
+		# Read alter_top_output_dirs and alter_top_working_dirs from files
+		@alter_top_output_dirs = 
+			&read_dirs_from_file($alter_top_output_dirs_fname, 0) 
+				if ($#alter_top_output_dirs < 0);
+		@alter_top_working_dirs = 
+			&read_dirs_from_file($alter_top_working_dirs_fname, 0) 
+				if $#alter_top_working_dirs < 0;
+        # save dirs list s
+		@save_alter_top_working_dirs = @alter_top_working_dirs;
+		@save_alter_top_output_dirs = @alter_top_output_dirs;
+
+		do init_prod_dir($top_output_dir, $product, $tape_id, $options_file);
+
+	}
+	# Validate options
+
+	# Error if no product was specified
+	if (!&level2_product_specified() && $product_list{'level_1'} == 0) {
+		print STDERR "$this_prog: Error: At least one product is required.\n";
+		do do_exit($SEVERE_ERROR_CODE);
+	}
+
+
+	if ($qc_dir ne "" && $qc_dirs_file ne "") {
+		print STDERR "$this_prog: Both -qc_dir and -qc_dirs_file can't be specified together.\n";
+		do do_exit($SEVERE_ERROR_CODE);
+	}
+	if ($csmap_dir ne "" && $csmap_dirs_file ne "") {
+		print STDERR "$this_prog: Both -csmap_dir and -csmap_dirs_file can't be specified together.\n";
+		do do_exit($SEVERE_ERROR_CODE);
+	}
+
+
+	# Setup ZR table option for '2A-53-v4' and '2A-53-dc'
+	do setup_zr_table_opt_for_2A53v4_and_2A53dc();
+}  # process_args 
+
+sub setup_zr_table_opt_for_2A53v4_and_2A53dc {
+	if ($product_list{'2A-53-v4'} == 1) {
+		if ($run_level2_at_singlevos == 1) {
+			# If running at single vos, get the user's specified ZR table from the
+			# option list and remove it from the option list.
+			# $zr_table_full_fname will be passed in as a mandatory input to the 
+			# command 'singlevos_2A-53-v4'.
+			local($opt) = $options_list{'2A-53-v4'};;
+			local($ztable) = $opt =~ /-z\s+(\S+)/;
+			if ($ztable ne "") {
+				$zr_table_full_fname = $ztable;
+				if (! -e $ztable) {
+					printf(STDERR "File not found: $ztable\n") if($verbose);
+				}
+			}
+			else {
+
+				$zr_table_full_fname = ""; # Default zr table done in 2A-53or2A-55
+			}
+			$opt =~ s/-z\s+\S+//;
+			$options_list{'2A-53-v4'} = $opt;
+		}
+		else {
+			# Granule level processing.
+			# $zr_table_full_fname will be passed in as an option input to the 
+			# command '2A-53'.
+			# Add '-z $zr_table_full_fname' to the option list if it doesnot exist.
+			# must set zr_table_full_fname = "".
+			local($opt) = $options_list{'2A-53-v4'};;
+			$zr_table_full_fname = "";
+		}
+		if ($zr_table_full_fname ne "") {
+			local(@zr_path) = split(/\//, $zr_table_full_fname);
+			$zr_table_fname = $zr_path[$#zr_path];
+		}
+
+	}
+
+#NEW
+	if ($product_list{'2A-53-dc'} == 1) {
+		if ($run_level2_at_singlevos == 1) {
+			# If running at single vos, get the user's specified ZR table from the
+			# option list and remove it from the option list.
+			# $dc_zr_table_full_fname will be passed in as a mandatory input to the 
+			# command 'singlevos_2A-53-dc'.
+			local($opt) = $options_list{'2A-53-dc'};;
+			local($ztable) = $opt =~ /-z\s+(\S+)/;
+			if ($ztable ne "") {
+				$dc_zr_table_full_fname = $ztable;
+				if (! -e $ztable) {
+					printf(STDERR "File not found: $ztable\n") if($verbose);
+				}
+			}
+			else {
+
+				$dc_zr_table_full_fname = ""; # Default zr table done in 2A-53or2A-55
+			}
+			$opt =~ s/-z\s+\S+//;
+			$options_list{'2A-53-dc'} = $opt;
+		}
+		else {
+			# Granule level processing.
+			# $dc_zr_table_full_fname will be passed in as an option input to the 
+			# command '2A-53'.
+			# Add '-z $dc_zr_table_full_fname' to the option list if it doesnot exist.
+			# must set dc_zr_table_full_fname = "".
+			local($opt) = $options_list{'2A-53-dc'};;
+			$dc_zr_table_full_fname = "";
+		}
+		if ($dc_zr_table_full_fname ne "") {
+			local(@zr_path) = split(/\//, $dc_zr_table_full_fname);
+			$dc_zr_table_fname = $zr_path[$#zr_path];
+		}
+
+	}
+   
+}
+
+sub create_absolute_fname {
+	# Prefix the save current dir to fname or
+	# leave it alone if fname starts with /.
+	local ($fname) = @_;
+
+	# Remove leading blank 
+	$fname =~ s/^\s+//;
+	if ($fname =~ /\./) {
+		print STDERR "$this_prog: dir <$fname> is invalid; Can't prepend \$save_curr_dir to it.\n";
+		do do_exit($SEVERE_ERROR_CODE);			
+	}
+	elsif ($fname !~ /^\//) {
+		$fname = "$save_curr_dir$fname";
+	}
+
+	return $fname;
+}
+
+
+sub run_level1 {
+	local ($p) = @_;
+	local($first_filename);
+	local($filename);
+	local($tape_type_str) = "";
+
+	# Work in the directory of level_1.
+	do cd_to_workdir($top_working_dir, $p, $tape_id);
+
+	print STDERR "$this_prog: Start processing level I...\n" if($verbose);;
+	# dirs have been created.
+	local($prod_top_output_dir) = $top_output_dir;
+	local($prod_working_dir) =   $top_working_dir.&get_dir_name($p, $tape_id);
+
+	local($new_opts);
+	if (!($options_list{$p} =~ /\-C\s+/)) {
+		# Yes, do produce 1C in HDF format
+		local($dir_1C)  = $options_list{$p} =~ /.*\-c\s+(\S+).*$/;
+
+		if ($dir_1C eq "") {
+			# No dir was specified. Will set to default dir ($dir_1C51_suffix).
+			# Add '-c $dir_1C51_suffix' to option_list.
+			# Note: $dir_1C51_suffix is relative the the top output dir.
+			# We want to store 1C-51 (HDF files) in $top_output_dir/$dir_1C51_suffix.
+			local($tmp_dir) = &change2absolute_dir2($prod_top_output_dir,
+													$dir_1C51_suffix);
+			$options_list{$p} = "$options_list{$p} -c $tmp_dir";
+		}
+		else {
+			# Dir was specified, ignore it and replace it in the option list 
+			#  with the default dir suffix.
+			
+			# Update option list
+			local($save_dir) = $dir_1C;
+			$dir_1C = $dir_1C51_suffix;
+			$full_path_dir_1C51 = &change2absolute_dir2($prod_top_output_dir,
+														$dir_1C); # Change it to user's specified dir.
+			$options_list{$p} =~ s#\-c\s+$save_dir#\-c $full_path_dir_1C51 #;
+
+			$qc_dir = $full_path_dir_1C51;  # Modify the path.
+		}
+		print STDERR "\n$this_prog: Will produce 1C51 product in $full_path_dir_1C51 ...\n" if($verbose);
+	}
+
+	if (!($options_list{$p} =~ /\-B\s+/)) {
+		# Yes, produce 1B in HDF format.
+		local($dir_1B)  = $options_list{$p} =~ /.*\-b\s+(\S+).*$/;
+		if ($dir_1B ne "") {
+			# Dir was specified,ignore it and replace it in the option list 
+			#  with the default dir suffix.
+
+			local($save_dir) = $dir_1B;
+
+			$dir_1B = $dir_1B51_suffix;
+			$full_path_dir_1B51 = &change2absolute_dir2($prod_top_output_dir, $dir_1B);
+			$options_list{$p} =~ s#\-b\s+$save_dir#\-b $full_path_dir_1B51#;
+		}
+		else {
+			# No dir was specified. Will set to default dir ($dir_1B51_suffix).
+			# Add '-b $dir_1B51_suffix' to option_list.
+			# We want to store 1B-51 (HDF files) in $full_path_dir_1B51.
+			local($tmp_dir) = &change2absolute_dir2($prod_top_output_dir,
+													$dir_1B51_suffix);
+			$options_list{$p} = "$options_list{$p} -b $tmp_dir";
+		}
+		print STDERR "\n$this_prog: Will produce 1B51 product in $full_path_dir_1B51 ...\n" if($verbose);
+	}
+
+	if ($options_list{$p} =~ /\-u\s+/) {
+		local($dir_uf) = $options_list{$p} =~ /.*\-u\s+(\S+).*$/;
+		# Produce UF; Use the default dir suffixed defined by
+		# this script.  Replace the one specified in the opt.
+		# list with the default dir.
+		local($save_dir) = $dir_uf;
+		
+		$dir_uf = &change2absolute_dir2($prod_top_output_dir,
+										$dir_1C51_UF_suffix);
+		$options_list{$p} =~ s#\-u\s+$save_dir#\-u $dir_uf#;
+	}
+#
+# Setup is completed.  Now execute level 1's program which depends
+# on the format of the input files.
+# 
+#
+	local($cmd)="";
+
+
+	local($send_mail_flag_str) = "-n"; # Only want to see mail from this
+	# script.
+	local($do_compress_level1_flag_str) = "-not_compress"
+		if ($do_compress_level1 == 0);
+	local($executable) = $programs{$p};
+	local($max_num_raw_files_per_hour_opt) = "-max_num_raw_files_per_hour $max_num_raw_files_per_hour" 
+		if $max_num_raw_files_per_hour > 0;
+	local($verbose_level_1) = "-v" if $verbose;
+	local($exec_options) = "$verbose_level_1 $send_mail_flag_str -i $raw_dir $max_num_raw_files_per_hour_opt -w ".&change2absolute_dir($prod_working_dir)." $alter_top_output_dirs_option_str $alter_top_working_dirs_option_str $do_compress_level1_flag_str -t $top_tmp_dir -first_data_file_number $first_data_file_num";
+	$exec_options .= " -tape_has_no_header_file" 
+		if ($tape_has_no_header_file);
+	$exec_options .= " -header_file_number $header_file_num"
+		if (!$tape_has_no_header_file);
+	$exec_options .= " -start_infile $start_raw_file"
+		if $start_raw_file ne "";
+	$exec_options .= " -not_report_monitorps" 
+		if ($not_report_monitorps == 1);
+	$exec_options .= " -last_infile $last_raw_file"
+		if $last_raw_file ne "";
+	$exec_options .= " -update_inventory_db"
+		if ($update_inventory_db);
+	$cmd = "$executable $device $tape_id $exec_options $p $options_list{$p}";
+	print STDERR "$this_prog: Executing ...$cmd\n" if($verbose);
+	do do_system_call($cmd, "");
+	print STDERR "$this_prog: End processing level I...\n" if($verbose);
+
+	chdir $top_working_dir;   # Move back to the top directory.
+} # run_level1
+
+
+
+sub do_system_call {
+	local($cmd, $filename) = @_;
+	# Returns 0 for failure
+	#         1 for successful
+	# Calls doexit_handler upon interrupt.
+	local($rc) = 0;
+#print STDERR "CMD::::::<$cmd>\n\n";
+	system($cmd);
+	$status = $? >> 8;
+	local($signal) = $? & 255;
+
+	do doexit_handler($signal) if ($signal != 0);
+	do doexit_handler('INT') if (&interrupted($status));
+	
+	$rc = &check_status($status, $cmd);
+	return $rc;
+
+} # do_system_call
+
+sub check_if_qc_is_required {
+	return 1 if ($product_list{'2A-55'} == 1 ||
+				 $product_list{'2A-55-dc'} == 1 ||
+				 $product_list{'2A-53-d'} == 1 || 
+				 $product_list{'2A-53-w'} == 1 ||
+				 $product_list{'2A-53-c'} == 1 ||
+				 $product_list{'2A-53-v4'} == 1 ||
+				 $product_list{'2A-53-dc'} == 1 ||
+				 $product_list{'2A-54'} == 1 ||
+		                 $product_list{'2A-54-dc'} == 1);
+	return 0;
+}
+
+sub check_if_csmap_is_required {
+    return 1 if ($product_list{'2A-55'} == 1 ||
+    		 $product_list{'2A-53-d'} == 1 || 
+		 $product_list{'2A-53-c'} == 1 ||
+		 $product_list{'2A-53-v4'} == 1 ||
+		 $product_list{'2A-53-w'} == 1);
+    return 0;
+}
+
+#NEW
+# FIX - handle case when 2A55 uses csmap_dc
+sub check_if_csmap_dc_is_required {
+    return 1 if ($product_list{'2A-53-dc'} == 1);
+    return 0;
+}
+
+sub check_if_gridded_refl_dc_is_required {
+    return 1 if ($product_list{'2A-54-dc'} == 1 || $product_list{'2A-53-dc'} == 1);
+    return 0;
+}
+
+#FIX need to add the following for -dc algs
+sub check_if_csmap_is_required_by_prods {
+	local(@prods) = @_;
+	local($p);
+	while (@prods) {
+		$p = shift @prods;
+		if ($p eq "2A-55" || $p eq "2A-53-v4" || $p eq "2A-53-d" ||
+			$p eq "2A-53-c" || $p eq "2A-53-w") {
+			return 1 if ($product_list{$p} == 1);
+		}
+	}
+
+	return 0;
+}
+
+sub check_if_qc_is_required_by_prods {
+	local(@prods) = @_;
+	local($p);
+	while (@prods) {
+		$p = shift @prods;
+		if ($p eq "2A-55" || $p eq "2A-53-v4" || $p eq "2A-53-d" ||
+			$p eq "2A-53-c" || $p eq "2A-53-w" || $p eq "2A-54") {
+			return 1 if ($product_list{$p} == 1);
+		}
+	}
+
+	return 0;
+}
+sub run_level2 {
+
+	print STDERR "$this_prog: Start processing level II...\n" if($verbose);
+
+	local(@qc_infile_list);  # Contains qc granuled HDF files
+
+	local($rc) = 0;
+
+	# Get QC files to list if required. Also
+	# check for their existence. Return if they do not exist.
+	if (&check_if_qc_is_required()) {
+
+		# Get all of the qc filenames (HDF only) from all of the qc
+		# directori(es), i.e., $qc_dir, dirs from $qc_dirs_file, and/or dirs 
+		# from $alter_top_output_dirs_file.
+		# The list contains sorted absolute filenames.
+
+		@qc_infile_list = 
+			&get_prod_files_list("level_1", $qc_dir, $qc_dirs_file,
+								 $product_list{'level_1'}, $dir_1C51_suffix);
+		$num_of_qc_hdf_files = 	$#qc_infile_list;													 
+
+		if ($#qc_infile_list < 0) {
+			print STDERR "$this_prog: WARNING: QC data does not exist for $tape_id.\n" if($verbose);
+			print STDERR "$this_prog: WARNING: Unable to produce products depending on QC data.\n" if($verbose);
+			return;
+		}
+	}
+
+    
+#NEW
+        # If running dual-cappi algorithms:
+	# 2A-53-dc requires both 2A-55-dc and 2A-54-dc
+	# 2A-54-dc requires only 2A-55-dc
+	# for these algorithms, the 2A-55-dc must exist first, because the 3d reflectivity field is used
+	# for its 0 and 1 level_1 cappis to create 2A-53-dc and 2A-54-dc.  
+	# Other cappis in 2A-55-dc are kept for comparison.
+
+	# The 2A-55-dc "pseudo-product" is useful, since it does not require a csmap to be created,
+	# though it doesn't contain CFAD or VPROF data, only a 3d reflectivity field.
+
+
+#FIX  should be able to use standard 2A-55 files as well as "2A-55-dc" files
+	if (&check_if_gridded_refl_dc_is_required()) {
+	    @gridded_refl_dc_list = &get_prod_files_list("2A-55-dc", $gridded_refl_dc_dir, $gridded_refl_dc_dirs_file,
+						      $product_list{'2A-55-dc'}, $dir_2A55_dc_suffix);
+
+	    
+	    if ($#gridded_refl_dc_list < 0 && $product_list{'2A-55-dc'} == 0) {
+		print STDERR "$this_prog: WARNING: Gridded reflectivity file does not exist for $tape_id.\n" if($verbose);
+		print STDERR "$this_prog: WARNING: Unable to produce products depending on Gridded reflectivity.\n" if($verbose);
+		return;
+	    }	    
+	    
+
+#DEBUG
+	    print STDERR "gridded_refl_dc_dir: $gridded_refl_dc_dir\n" if $DEBUG;
+	    print STDERR "gridded_refl_dc_list: @gridded_refl_dc_list\n" if $DEBUG;
+
+	}
+
+
+	if(&check_if_csmap_dc_is_required()) {
+	    
+	    @csmap_dc_list = &get_prod_files_list("2A-54-dc", $csmap_dc_dir, $csmap_dc_dirs_file,
+						  $product_list{'2A-54-dc'}, $dir_2A54_dc_suffix);
+
+	    
+	    if ($#csmap_dc_list < 0 && $product_list{'2A-54-dc'} == 0) {
+		    print STDERR "$this_prog: WARNING: Dual-cappi CSmap file does not exist for $tape_id.\n" if($verbose);
+		    print STDERR "$this_prog: WARNING: Unable to produce products depending on dual-cappi CSmap.\n" if($verbose);
+		if ($product_list{'2A-55'} == 1) {
+
+		    print STDERR "$this_prog: WARNING: 2A-55: Using 'pseudo-cappi' CSmap.\n" if ($verbose);
+		    $use_pseudo_cappi = 1;
+		}
+		    return;
+	    }	 
+	}
+
+
+	# Check if csmap files exist.
+
+	if (&check_if_csmap_is_required() || $use_pseudo_cappi == 1) {
+
+		# Get all of the csmap filenames from all of the csmap dirs.,
+		# $csmap_dir, dirs from $csmap_dirs_file, and/or dirs from
+		# $alter_top_output_dirs_file.
+		# The list contains sorted absolute filenames.
+		@csmap_list =
+		    &get_prod_files_list("2A-54", $csmap_dir, $csmap_dirs_file,
+					 $product_list{'2A-54'}, $dir_2A54_suffix);
+		
+		if ($#csmap_list < 0 && $product_list{'2A-54'} == 0) {
+			print STDERR "$this_prog: WARNING: CSmap does not exist for $tape_id.\n" if($verbose);
+			print STDERR "$this_prog: WARNING: Unable to produce products depending on CSmap.\n" if($verbose);
+			return;
+		}
+	}
+
+	# Get site name from the first 1C-51 file.  This info will be passed
+	# as option on to these programs: 2A-54 and 2A-55, if the option files
+	# for these programs do not contain, -S sitename.  Although
+	# those programs can determine sitename, we want to pass this site info.
+	# to them to improve efficiency -- this eliminates the need to get site
+	# name each time the program is called. 
+	print STDERR "Getting site name from file: $qc_infile_list[0]\n" if($verbose);
+	local($qc_file) = $qc_infile_list[0];
+	local($compress) = 0;
+	# Uncompress file to the working dir if necessary -- leave the original
+	# file untouched.
+	if ($qc_file =~ /(\.gz$)|(\.Z$)/) {
+		local($new_qc_file) = $qc_file;
+
+		# Check for disk space -- handle out of disk space appropriately.
+		&check_for_enough_disk_space($uncompress, $qc_file, "", "", 0, ());
+		do uncompress_file_to_current_dir($qc_file, *new_qc_file);
+		$qc_file = $new_qc_file;
+		# Modify name from list.
+		$qc_infile_list[0] = $qc_file; 
+	}
+		
+	$site_name =  &get_site_name_from_1C51_hdf_file($qc_file);
+    # Set options for specific data
+	$site_specific_opts = "-S $site_name" if $site_name ne "";
+
+
+	if ($run_level2_at_singlevos == 0 && 
+		@qc_infile_list[0] =~ /(\.${ghdf_file_ext})((\.Z$)|(\.gz$))?$/) {
+			
+			# Run at granule level if qc files are in HDF format and user
+			# requested.
+			do run_level2_at_granule(*qc_infile_list) 
+				unless $#qc_infile_list < 0;
+	}
+	else {
+		# Run all level 2  -- at single VOS
+		do run_level2_at_singlevos(@qc_infile_list);
+		do send_status_msg($hdf2uf_jobnum + 1, "level_1_ghdf_to_singlevos_uf", "NOFILE", $stat_array[4]) 
+			if $hdf2uf_jobnum > 0;
+		do send_status_msg($ghdf2shdf_jobnum + 1, "level_2_ghdf_to_singlevos_hdf", "NOFILE", $stat_array[4]) 
+			if  $ghdf2shdf_jobnum > 0;
+		
+	}
+	# send finish status message for finished products
+	do send_finish_stat_for_products(@process_order);
+
+
+	do set_products_status(*products_status, $FINISHED_STR, @active_prods_list);
+
+	if ($update_inventory_db) {
+		# Send info of each file for all products to GV inventory DB.
+		do send_product_info_to_inventory($tape_id, *active_prods_list, *options_list,
+								  $prod_processed_num, *products_status,
+								  "");
+	}
+													
+	print STDERR "$this_prog: End processing level II...\n" if($verbose);
+} # run_level2
+
+		
+sub get_prod_files_list {
+	local($prod, $prod_dir, $prod_dirs_file, $prod_specified, 
+		  $prod_dir_suffix_name) = @_;
+
+	# Returns a list of all of the product's filenames from all of the products
+	# directori(es),
+	# i.e., $prod_dir, dirs from $prod_dirs_file, and/or dirs from 
+	# $save_alter_top_output_dirs_file/$prod_dir_suffix_name.
+	# The return list will contain sorted absolute filenames.
+
+	local(@prod_files_list) = ();
+	local(@tmp_prod_file_list) = ();
+
+	if ($prod_specified == 0) {
+
+		# Product is not specified (This means product already exist):
+		if ($prod_dir ne "") {
+			# List contains sorted absolute filenames.
+			@tmp_prod_file_list = &get_prod_files_from_dir($prod, $prod_dir, 1, 0);
+		
+			if ($DEBUG) {
+				print STDERR "temp_prod.. @tmp_prod_file_list\n";
+				print STDERR "$prod_dir\n";
+				print STDERR "$prod\n";
+				$listing = `ls $prod_dir`;
+				print STDERR "listing: $listing\n";
+			}
+
+		}
+		elsif ($prod_dirs_file ne "") {
+			local(@prod_dirs) = &read_dirs_from_file($prod_dirs_file, 0);
+			# List contains sorted absolute filenames.
+			@tmp_prod_file_list = &get_prod_files_from_dirs($prod, @prod_dirs, 0);
+		}
+
+		do combine_lists(*prod_files_list, *tmp_prod_file_list) 
+			if ($#tmp_prod_file_list >= 0);
+	}
+	else {
+		# Product is specified:
+		#  In case out of disk space had occurred,
+		#  product data  might be located in 
+		#  $dir/$prod_dir_suffix_name
+		#  for each $dir in $save_alter_top_output_dirs_fname.
+		if ($prod_dir ne "") {
+			# List contains sorted absolute filenames.
+			@tmp_prod_file_list = &get_prod_files_from_dir($prod, $prod_dir, 1, 0);
+#DEBUG
+			if ($DEBUG) {
+				print STDERR "temp_prod.. @tmp_prod_file_list\n";
+				print STDERR "$prod_dir\n";
+				print STDERR "$prod\n";
+				$listing = `ls $prod_dir`;
+				print STDERR "listing: $listing\n";
+			}
+		}
+		do combine_lists(*prod_files_list, *tmp_prod_file_list) 
+			if ($#tmp_prod_file_list >= 0);
+		local(@tmp_alter_top_output_dirs) = @save_alter_top_output_dirs;
+		local(@prod_dirs_list)= ();
+		while (@tmp_alter_top_output_dirs) {
+			local($out_top_dir) = shift @tmp_alter_top_output_dirs;
+			push(@prod_dirs_list, "$out_top_dir$prod_dir_suffix_name");
+		}
+
+		# List contains sorted absolute filenames.
+		@tmp_prod_file_list = &get_prod_files_from_dirs($prod, @prod_dirs_list, 0);
+		do combine_lists(*prod_files_list, *tmp_prod_file_list) 
+			if ($#tmp_prod_file_list >= 0);
+
+	}	
+
+	@prod_files_list;		
+} # get_prod_files_list
+
+
+sub get_prod_files_from_dirs {
+	local($prod, @dirs, $single_vos_only) = @_;
+
+	# Returns a list of product's filenames from each dir from dirs list.
+	# List will contain sorted absolute filenames.
+
+	local(@prod_files_list, @tmp_prod_files_list) = ();
+
+	while (@dirs) {
+		local($dir) = shift @dirs;
+		@tmp_prod_files_list = &get_prod_files_from_dir($prod, $dir, 1, $single_vos_only);
+		do combine_lists(*prod_files_list, *tmp_prod_files_list) 
+			if ($#tmp_prod_files_list >= 0);
+	}
+
+	@prod_files_list;
+} # get_prod_files_from_dirs
+
+
+
+sub elem_in_list {
+	local(*list, $elem) = @_;
+
+	# Return 1 if elem is in list; 0, otherwise
+	local($i);
+
+	for ($i = 0; $i <= $#list; $i++) {
+		return 1 if ($list[$i] eq $elem);
+	}
+	return 0;
+}
+
+
+
+sub get_prod_files_from_dir {
+	local($prod, $dir, $create_fullpath_fnames, $single_vos_only) = @_;
+	# Returns a list of filenames of HDF files (un/compressed) in $dir.
+	# For 'level_1', it will return a list of HDF filenames.
+	# List is sorted. List  contains absolute filenames if $create_fullpath_fnames = 1.
+	# Only get single vos file (*.hdf) if $single_vos_only = 1
+
+	local(@prod_files_list) = ();
+
+	local($uf_exp) = "";
+	$uf_exp = "$uf_file_ext" if $prod eq "level_1";
+	$hdf_exp = "$ghdf_file_ext";
+	$hdf_exp = "$shdf_file_ext" if $single_vos_only == 1;
+
+	do read_files_from_dir_to_list($dir, $hdf_exp, *prod_files_list);
+
+#	if ($#prod_files_list < 0 && $prod eq "level_1") {
+		# Try again for level_1, this time reading UF files
+#		do read_files_from_dir_to_list($dir, $uf_file_ext, *prod_files_list);
+#	}
+	return @prod_files_list if ($#prod_files_list < 0);
+
+	# Sort file list
+	@prod_files_list = sort gv_product_filenames_sort_compare_func @prod_files_list;
+
+	local($i);
+	for ($i = 0; $i <= $#prod_files_list; $i++) {
+		# Append pathname to filename if requested
+		$prod_files_list[$i] = "$dir$prod_files_list[$i]" if $create_fullpath_fnames == 1;
+		chop $prod_files_list[$i] if $prod_files_list[$i] =~ /(\n)|(\r)/;  # Remove newline if any.
+	}
+
+	@prod_files_list;
+} #get_prod_files_from_dir 
+
+
+sub run_level2_at_granule {
+	local(*ghdf_infile_list) = @_;
+
+	print STDERR "DEBUG: Entered run_level2_at_granule\n" if $DEBUG;
+# This routine runs programs at one-hour granule level.
+	$jobnum = 0;
+
+	return if ($#ghdf_infile_list < 0);
+
+	local($i);
+
+	# Remove files not to be processed from 
+	# the list.	
+	do remove_unwanted_files(*ghdf_infile_list);
+
+	for ($i = 0; $i <= $#ghdf_infile_list; $i++) {
+		local($tmpfile) = $ghdf_infile_list[$i];
+		# if not an HDF file continue
+		next if (!($tmpfile =~ /(\.${ghdf_file_ext})((\.Z$)|(\.gz$))?$/) );
+
+		$jobnum++;
+		local($ghdf_file) = $tmpfile;   # One-hour granule HDF file
+
+
+		# Check for disk space -- handle out of disk space appropriately.
+		&check_for_enough_disk_space($run_prod, $ghdf_file, $granule_type, "", 0, ());
+
+		local($compressed) = 0;
+		# Uncompress HDF file.
+		if ($ghdf_file =~ /(\.gz$)|(\.Z$)/) {
+			local($new_ghdf_file) = $ghdf_file;
+			next if (&uncompress_file_to_current_dir($ghdf_file, 
+													 *new_ghdf_file) <0);
+			
+			$ghdf_infile_list[$i] = $new_ghdf_file;   # Update name from list
+			$ghdf_file = $new_ghdf_file;
+			$compressed = 1;
+		}
+
+		do process_some_level2($ghdf_file, "", "", $granule_type, "", $jobnum);
+        # Remove tmp HDF file
+		unlink $ghdf_file if ($compressed == 1);
+	}
+
+} # run_level2_at_granule
+
+sub remove_unwanted_files {
+	local(*infile_list) = @_;
+    # Remove files not to be processed from 
+	# the list.	
+	# infile list may either contain QC filenames (uf or HDF files) 
+
+
+	return if ($#infile_list < 0);
+
+	local($input_file_type) = &get_infile_type($infile_list[0]);
+	if ($input_file_type eq $qc_type) {
+		# Input files are QC files. Remove the unwanted files
+		# based on the start_qc_file/last_qc_file if they
+		# (start_qc_file/last_qc_file) are specified or 
+		# start_csmap_file/last_csmap_file if start_csmap_file/last_csmap_file
+		# are specified and start_qc_file/end_qc_file are not specified.
+		# 
+		local($start_file) = "";
+		local($last_file) = "";
+		if ($start_qc_file ne "") {
+			$start_file = $start_qc_file if $start_qc_file =~ /HDF/; # HDF file
+		}
+		elsif ($start_csmap_file ne "") {
+			# Just use the suffix of the filename of csmap, i.e.,
+			# '.950802.16.MELB.1.HDF[.Z|gz]'.
+			($start_file) = $start_csmap_file =~ /.*2A54(.+)/;
+		}
+		if ($last_qc_file ne "") {
+			$last_file = $last_qc_file if $last_qc_file =~ /HDF/; # HDF file
+		}
+		elsif ($last_csmap_file ne "") {
+			# Just use the suffix of the filename of csmap, i.e.,
+			# '.950802.16.MELB.1.HDF[.Z|gz]'.
+			($last_file) = $last_csmap_file =~ /.*2A54(.+)/;
+		}
+		# Donot remove the unwanted files from disk. @infile_list must
+		# be sorted. Remove unwanted files from the beginning of list.
+		@infile_list = &remove_processed_files_from_list("", 0, $start_file,
+															@infile_list)
+			if ($start_file ne "");
+		# Unwanted files will not be removed from disk. @infile_list must
+		# be sorted. Remove unwanted files from the end of list.
+		@infile_list = &remove_bottom_unwanted_files_from_list("", 0,
+															   $last_file,
+															   @infile_list)
+			if ($last_file ne "");
+	}
+
+} # remove_unwanted_files 
+
+sub get_infile_type {
+	local($infile) = @_;
+	return $qc_type if ($infile =~ /1C51/ || $infile =~ /$qc_uf_file_ext/);
+	return $csmap_type if ($infile =~ /2A54/);
+	return $unknown_type;
+}
+
+
+sub run_level2_at_singlevos {
+	local(@qc_infile_list) = @_;
+# This routine runs programs at single vos level.
+# qc files must be in HDF (1 Hr granule) format.
+# HDF files may either be compressed or uncompressed.
+#
+	return if $#qc_infile_list < 0;
+	$jobnum = 0;
+
+	# qc_infile_list contains granuled HDF files (files may be compressed).
+	# The algorithm is as followed:
+	# 1. For each granuled QC file (HDF), do
+	#    a. Call process_level2_at_vos_level.
+
+	$granule_jobnum = 0;
+	# Remove files not to be processed from 
+	# the list.	
+	do remove_unwanted_files(*qc_infile_list);
+
+	while (@qc_infile_list)  {	# 
+		local($tmpfile) = shift @qc_infile_list;
+		# if not a HDF file continue
+		if (!($tmpfile =~ /(\.${ghdf_file_ext})((\.Z$)|(\.gz$))?$/) ) {
+			next;
+		}
+		local($qc_hdf_file) = $tmpfile;   # One-hour granule HDF file
+		local($remove_tmp_file) = 0;	
+		# Uncompress file.
+		if ($qc_hdf_file =~ /(\.gz$)|(\.Z$)/) {
+			local($new_qc_hdf_file) = $qc_hdf_file;
+			do uncompress_file_to_current_dir($qc_hdf_file, *new_qc_hdf_file);
+			$qc_hdf_file = $new_qc_hdf_file;
+			$remove_tmp_file = 1;
+		}
+
+		$granule_jobnum++;
+
+		do process_level2_at_vos_level($top_tmp_dir, $qc_hdf_file, $vos_type);
+		if ($remove_tmp_file == 1) {
+
+			unlink $qc_hdf_file;
+		}
+	}							
+
+
+} # run_level2_at_singlevos
+
+#FIX add 2A-53-dc
+sub get_csmap_ghdf_file {
+	# Return the csmap file (granuled HDF) associated with the qc_hdf_file 
+	# for 2A-53 {w,c,d,v4}, 2A-55.
+	# Return "", otherwise.
+	local($qc_hdf_file) = @_;
+	local($fname) = "";
+
+	if ($product_list{'2A-54'} == 0 &&	
+		($product_list{'2A-53-w'} == 1 ||
+		 $product_list{'2A-53-d'} == 1  || $product_list{'2A-53-c'} == 1 ||
+		 $product_list{'2A-53-v4'} == 1 || $product_list{'2A-55'} == 1)) {
+		
+		$fname = &get_prod_filename("2A-54", $qc_hdf_file, "","",
+									$granule_type, $in, *csmap_list,
+									*csmap_shdf_file_list );
+	}
+	return $fname;
+}
+
+
+#FIX - need to pass in gridded 2A55 hdf file
+sub process_level2_at_vos_level {
+	local($top_tmp_dir, $qc_hdf_file, $level_type) = @_;
+	# qc_hdf_file is a granuled HDF file. it must be uncompressed.
+	#
+	# The algorithm is as followed:
+	# 1. Explode (degranulize) granule HDF file(s), if any, to single VOS files
+	#    and UF files.
+	# 2. For each single VOS, do:
+	#    a. Process all specified level2 programs.
+	#    b. Remove uf file.
+	# 3. Now implode results (single VOS files) to one-hour granule --
+	#    This step will remove single vos files when finished.
+
+	# We 'll check for enough disk space once before processin level2 progs.
+
+	return if $qc_hdf_file eq "";
+
+	local(@qc_uf_file_list) = ();
+
+
+
+# FIX - get gridded refl  and csmap dc
+#### 2A-53-dc and 2A-54-dc don't need uf files
+
+
+	# Get granuled csmap file associated with the qc_hdf_file.
+	# Degranulize 1 hour granule csmap file(s) (HDF) to single VOS (HDF) if 
+	# csmap products had been produced from the earlier run. 
+	# This is the case when user didnot specify '2A-54'.
+	local($csmap_ghdf_file) =  &get_csmap_ghdf_file($qc_hdf_file);
+	print STDERR "$this_prog: degranulize_input_files...$qc_hdf_file\n" if($verbose);
+	# Will check for enough space before it degranulizes the input files.
+	local($stat) = &degranulize_input_files($top_tmp_dir, $qc_hdf_file,
+						$csmap_ghdf_file, *qc_uf_file_list);
+
+	if ($stat == -1) {
+		# Create  empty granule products for all of the specified level 2 prods
+		goto CREATE_PROD;
+	}
+	# Check for disk space -- handle out of disk space appropriately.
+	&check_for_enough_disk_space($run_prod, $qc_hdf_file, $vos_type, "", 0, ());
+	local($csmap_gen_date) = "";
+	while (@qc_uf_file_list) {
+		# UF files might be compressed.
+
+		local($qc_uf_file) = shift @qc_uf_file_list;   # UF file
+		next if !($qc_uf_file =~ /uf/);
+
+		chop $qc_uf_file if $qc_uf_file =~ /(\n)|(\r)/;  # Remove newline if any.
+
+		print STDERR "$this_prog: Processing level2's for <$qc_uf_file>...\n" if($verbose);
+		$jobnum++;
+
+		# Process all level2 at single vos level.
+		do process_some_level2($qc_hdf_file, $qc_uf_file, "", $vos_type, 
+				       $top_tmp_dir, $jobnum);
+
+
+
+# FIX - remove 2A-55-dc and 2A-54-dc if only used for input
+
+
+		local($csmap_fname) = 
+			&get_prod_filename("2A-54", $qc_hdf_file, $qc_uf_file,"",
+							   $vos_type, $in, *csmap_list,
+							   *csmap_shdf_file_list);
+
+		if (-e $csmap_fname) {
+			if ($product_list{'2A-54'} == 0) {
+				# Remove assocated csmap  since it was exploded for 
+				# temporary usage.
+				do do_system_call("rm $csmap_fname", ""); # 
+
+			}
+			else {
+				# 2A-54 products are being produce. They have not been
+				# granulized yet.
+				$csmap_ghdf_file = &get_filename("", "2A-54", $qc_hdf_file,
+												 $qc_uf_file, "", $granule_type,
+												 $out);
+			}
+		}
+		# 
+		# Remove this uf file.
+		do do_system_call("rm $qc_uf_file", "");
+	}
+CREATE_PROD:
+	print STDERR "$this_prog: granulize_input_files...\n" if($verbose);
+	# granulize products. This step will remove single vos files after finished
+	# Input files may contain pathname.
+	# csmap_ghdf_file may not exist yet.
+	do granulize_all_level2_products($top_tmp_dir, $qc_hdf_file,
+									 $csmap_ghdf_file); 
+	
+} # process_level2_at_vos_level 
+
+
+sub get_today_date {
+	# Return today's date in this format: yyyy/mm/dd
+	# date: Mon Jun  2 13:51:07 EDT 1997
+
+	local($to_date) = `date`;
+	local(@date_items) = split(' ', $to_date);
+	local(%mon_table) = (
+						 'Jan', '01',
+						 'Feb', '02',
+						 'Mar', '03',
+						 'Apr', '04',
+						 'May', '05',
+						 'Jun', '06',
+						 'Jul', '07',
+						 'Aug', '08',
+						 'Sep', '09',
+						 'Oct', '10',
+						 'Nov', '11',
+						 'Dec', '12'
+						 );
+	local($mon) = $date_items[1];
+	local($day) = $date_items[2];
+	# Use 2-digit for day
+	do change_to_2digits(*day); 
+	return "$date_items[$#date_items]/$mon_table{$mon}/$day";
+}
+
+sub change_to_2digits {
+	local(*num) = @_;
+	# Change num to tw0-digit number
+
+	$num = "0".$num if ($num eq "1" || $num eq "2" || $num eq "3" || 
+						$num eq "4" || $num eq "5" ||
+						$num eq "6" || $num eq "7" || $num eq "8" ||
+						$num eq "9");
+}
+
+sub get_file_mod_date {
+	local($fname) = @_;
+	# Return last modified date for file if it exists; "", otherwise.
+
+	return "" if ($fname eq "" || !(-e $fname));
+	local($dev, $ino, $mod, $nlink, $uid, $gid, $rdv, $size, $atime, $mtime, $ctime, $blksize, $blocks) = stat($fname);
+
+	local($sec, $min, $hour, $mday, $mon, $yr, $wday, $yday, $isdst) = localtime($mtime);
+	$yr += 1900;
+
+	$mon ++;
+	do change_to_2digits(*mon);
+	do change_to_2digits(*mday);
+	local($mdate) = "$yr/$mon/$mday";    # yyyy/mm/dd
+	return $mdate;
+}
+
+sub create_param_info_file_4level2 {
+	local($qc_hdf_file, $csmap_ghdf_file, $prod, $param_fname) =  @_;
+	# Create a param file named 'param_fname'. The format is followed:
+	#    line 1: input files (no pathname) separated by space
+	#    line 2: input files' generated date separated by space
+	#    line 3: program's runtime options.
+	#  input files do not  contain pathname.
+	# This routine is called when processing at single vos
+
+	return if ($param_fname eq "");
+	open(TMP_FILE, "> $param_fname") || return -1;
+
+
+	# Qc input file
+	local(@qc_path) = split(/\//, $qc_hdf_file);
+	local(@infile_list) = ($qc_path[$#qc_path]);
+	local($qc_gen_date) = &get_file_mod_date($qc_hdf_file);
+	local(@infile_gen_date_list) = ($qc_gen_date);
+	local(@tmp_p) = ($p);
+
+	# csmap input file
+	if (&check_if_csmap_is_required_by_prods(@tmp_p) == 1) {
+		local(@csmap_path) = split(/\//, $csmap_ghdf_file);
+		push(@infile_list, $csmap_path[$#csmap_path]);
+		local($csmap_gen_date) = &get_today_date();
+		$csmap_gen_date = &get_file_mod_date($csmap_ghdf_file)
+			if ($csmap_ghdf_file ne "" && -e $csmap_ghdf_file);
+		push(@infile_gen_date_list, " $csmap_gen_date");
+	}
+
+	if ($prod eq "2A-53-v4" && $zr_table_fname ne "") {
+		push(@infile_list, $zr_table_fname);
+		local($zr_gen_date) = &get_file_mod_date($zr_table_full_fname);
+		push(@infile_gen_date_list, " $zr_gen_date");
+	}
+
+	if ($prod eq "2A-53-dc" && $dc_zr_table_fname ne "") {
+		push(@infile_list, $dc_zr_table_fname);
+		local($zr_gen_date) = &get_file_mod_date($dc_zr_table_full_fname);
+		push(@infile_gen_date_list, " $zr_gen_date");
+	}
+	# write input files to file
+
+	print TMP_FILE "@infile_list\n";
+	print TMP_FILE "@infile_gen_date_list\n";
+	local($options) = $options_list{$prod};
+	print TMP_FILE "$options\n";
+	close(TMP_FILE);
+}
+
+
+
+sub degranulize_input_files {
+	local($top_dir, $qc_hdf_file, $csmap_file, *qc_uf_file_list) = @_;
+# This routine explodes the granuled qc 
+# HDF file and csmap file to single vos files 
+# Single VOS files will be placed in a tmp dir.
+# qc_hdf_file can't be ""; csmap_file can be "".
+#
+
+	return -1 if ($qc_hdf_file eq "");
+
+	# check for enough disk space before degranulizing qc file
+	do check_for_enough_disk_space($degranulize, "", "", "1C-51", 0, ());
+	
+	local($uf_tmp_dir) = &create_tmp_dir($top_tmp_dir, "1C-51");
+	# Degranulize 1 hour granule qc'ed (HDF) to single VOS (UF).
+	@qc_uf_file_list = &degranulize_qc_hdf($qc_hdf_file, $uf_tmp_dir);
+	if ($#qc_uf_file_list < 0) {
+		print STDERR "$this_prog: No uf file for $qc_hdf_file\n" if($verbose);
+		return 0;     # Granule is empty
+	}
+
+	if ($csmap_file ne "") {
+		# check for enough disk space before degranulizing file
+		do check_for_enough_disk_space($degranulize, "", "", "2A-54", 0, ());
+		
+		# Create tmp dir to place single VOS csmap files
+		local($csmap_tmp_dir) = &create_tmp_dir($top_tmp_dir, "2A-54");
+		
+		# De-granulize csmap file associated with the qc_hdf_file.
+		@csmap_shdf_file_list =	
+			&degranulize_level2($csmap_file, $csmap_tmp_dir,"2A-54");
+		
+		if ($#csmap_shdf_file_list < 0) {
+			print STDERR "$this_prog: No csmap file $csmap_file for $qc_hdf_file\n" if($verbose);
+			return -1;			# 
+		}
+		
+	}
+
+	return 0;
+}	# degranulize_input_files 
+
+
+sub get_prod_filename {
+
+	local($prod, $ghdf_fname, $qc_uf_fname, $gridded_refl_shdf_fname,
+		  $level_type, $in_or_out, *prod_granuled_files_list,
+		  *prod_vos_files_list) = @_;
+	# Returns product's absolute filename associated with ghdf_fname.
+	# If $in, product's filename is from prod_granuled_files_list, 
+	# prod_vos_files_list, or &get_tmp_dir($top_working_dir, $prod).
+	# If $out, construct a file name for product based on ghdf_fname.
+	#
+	# ghdf_fname: [/path/]????.yymmdd.vos#.site_char.ver#.HDF*
+	# qc_uf_fname name: [/path/]yymmdd.vos#.site.ver#.hhmm.uf*.  This file
+	# is only needed if type is vos_type.
+	#
+	# $gridded_refl_shdf_fname is used if level_type is vos type and product is 2A-53-dc or 2A-54-dc
+
+	local($file) = "";
+
+	print STDERR "get_prod_filename\n";
+	print STDERR "\tprod       =$prod\n";
+	print STDERR "\tproduct    =$product\n";
+	print STDERR "\tghdf_fname =$ghdf_fname\n";
+	print STDERR "\tqc_uf_fname=$qc_uf_fname\n";
+	print STDERR "\tgridded_refl_shdf_fname =$gridded_refl_shdf_fname\n";
+	print STDERR "\tlevel_type =$level_type\n";
+	print STDERR "\tin_or_out  =$in_or_out\n";
+	print STDERR "\tin      t  =$in\n";
+	print STDERR "\tprod_granuled_files_list=",join(' ',@prod_granuled_files_list),"\n";
+
+	if ($in_or_out eq $in) {
+		# Check from the current 
+		local($version_num) = &get_prod_version_num($prod, $in_or_out);
+		local(@path);
+		local($core_fname);
+		
+		if ($ghdf_fname ne "" && $level_type eq $granule_type) {
+			@path = split(/\//, $ghdf_fname);
+			$core_fname = $path[$#path];
+			# Core_fname:= ".yymmdd.vos#.site_char."
+			($core_fname) = $core_fname  =~ /^\w+\.(\d+\.\d+\.\w+\.).+/;
+			# Core_fname:= ".yymmdd.vos#.site_char.version#"
+			$core_fname = "$core_fname$version_num";
+		}
+		if ($qc_uf_fname ne "" && $level_type eq $vos_type) {
+			@path = split(/\//, $qc_uf_fname);
+			$core_fname = $path[$#path];
+			
+			# Core_fname:= ".yymmdd.vos#.site_char."
+			($core_fname,$time_str)  = $core_fname =~ /^(\d+\.\d+\.\w+\.)\d+\.(\d+).+/;
+			# Core_fname:= ".yymmdd.vos#.site_char.version#.$time_str"
+			$core_fname = "$core_fname$version_num.$time_str";
+		}
+
+		# construct csmap_dc filename from gridded refl shdf 
+		if ($prod eq "2A-53-dc" && $gridded_refl_shdf_fname ne "" && $level_type eq $vos_type) {
+		        @path = split(/\//, $gridded_refl_shdf_fname);
+			$core_fname = $path[$#path];
+
+##FIX need to remove "2A55" substring 
+			($core_fname,$time_str)  = $core_fname =~ /^(\d+\.\d+\.\w+\.)\d+\.(\d+).+/;
+			$core_fname = "$core_fname$version_num.$time_str";
+		}
+
+#		print STDERR "\tcore_fname=$core_fname\n";
+		# Find file from list.
+		local(@tmp_files_list);
+		@tmp_files_list = @prod_granuled_files_list if ($level_type eq $granule_type);
+		@tmp_files_list = @prod_vos_files_list if ($level_type eq $vos_type);
+		while (@tmp_files_list) {
+			$file = shift @tmp_files_list;
+			last if ($file =~ /${core_fname}/);
+		    $file = "";
+	    }
+#	print STDERR "file=$file\n";
+    } else {
+		# filename for output product.
+		$file = &get_filename(&get_dir_name($prod, $tape_id), $prod,
+							  $ghdf_fname, $qc_uf_file, "", $level_type,
+							  $in_or_out);
+	}
+    #remove new line char if any
+    chop $file if $file =~ /(\r)|(\n)/;
+
+    return $file;
+} # get_prod_filename
+
+
+sub create_tmp_dir {
+	local($top_dir, $product) = @_;
+
+	local($dir) = $top_dir."gvs_$product/";
+	do create_dir($dir, 0, 1);
+	return $dir;
+}
+
+sub get_tmp_dir {
+	local($top_dir, $product) = @_;
+	return $top_dir."gvs_$product/";
+}
+
+
+sub process_some_level2 {
+	local($ghdf_file, $qc_uf_file, $gridded_refl_dc_shdf, $level_type, $input_top_dir, $jobnum) = @_;
+	# qc_uf_file and input_top_dir are only needed if level_type == vos_type
+	# ghdf_file is qc .
+	#
+	# gridded_refl_dc_shdf is needed if level_type == vos_type and product is 2A-53-dc or 2A-54-dc
+	#
+	# This routine processes programs at either single VOS or granuled level
+	# depending  on $level_type.
+	#
+	# Note: We assume that out of disk space will not occur during the
+	#       processing in this routine since space checking was checked 
+	#       before entering into this routine. Therefore, no dir(s), i.e.,
+	#       top_working_dir, top_output_dir, etc., will be modified.
+
+	
+	local($p);
+	local($infile);
+	local($dir);
+	local($fullname_outfile) = "";
+	$infile  = $qc_uf_file if $level_type eq $vos_type;     # UF file  
+	$infile  = $ghdf_file  if $level_type eq $granule_type; # HDF file 
+
+	local($gridded_refl_dc_ghdf) = "";
+	local($curr_gridded_refl_dc) = "";
+#NEW
+	local($compress_gridded_refl_dc) = 0;
+	local($remove_tmp_gridded_refl_dc) = 0;
+
+	print STDERR "DEBUG: Entered process_some_level2\n" if $DEBUG;
+	print STDERR "granule_type = '$granule_type'\n" if $DEBUG;
+
+	if ($level_type eq $granule_type && ( $product_list{'2A-53-dc'} ==1 || $product_list{'2A-54-dc'}  == 1)) {
+	    $curr_gridded_refl_dc = &get_prod_filename("2A-55-dc", $ghdf_file, $qc_uf_file, $gridded_refl_dc_shdf,
+							      $level_type, $in, *gridded_refl_dc_list, 
+							      *gridded_refl_dc_shdf_file_list);
+	
+ 	    print STDERR "curr_gridded_refl_dc = '$curr_gridded_refl_dc'\n" if $DEBUG;
+	    
+	    if ($curr_gridded_refl_dc =~ /(\.gz$)|(\.Z$)/) {
+		local($new_gridded_refl_dc) = $curr_gridded_refl_dc;
+		do uncompress_file_to_current_dir($curr_gridded_refl_dc, *new_gridded_refl_dc);
+		$curr_gridded_refl_dc = $new_gridded_refl_dc;
+		$remove_tmp_gridded_refl_dc = 1;
+	    }
+					   
+	   $gridded_refl_dc_ghdf = $curr_gridded_refl_dc;
+       }				       
+
+		print STDERR "DEBUG: gridded_refl_dc_ghdf:$gridded_refl_dc_ghdf\n" if $DEBUG;
+
+# FIX - get csmap_dc based on gridded_refl_dc passed as param
+
+# NEW get dual-cappi csmap if dual-cappi products are being produced
+
+
+	local($compress_csmap_dc) = 0;
+	local($remove_tmp_csmap_dc) = 0;
+	local($curr_csmap_dc) = "";
+
+# FIX won't work for all 2A-55, only when csmap_dc available
+	if ($product_list{'2A-53-dc'} == 1 || $product_list{'2A-55'} == 1 && ($use_pseudo_cappi == 0)) {
+
+	    $curr_csmap_dc = &get_prod_filename("2A-54-dc", $ghdf_file, $qc_uf_file, $gridded_refl_dc_shdf,
+						       $level_type, $in, *csmap_dc_list, 
+						       *csmap_dc_shdf_file_list);
+
+
+
+	    # Uncompress csmap if it's compressed and compress it back.
+	    # Uncompress HDF file
+	    
+	    if ($curr_csmap_dc =~ /(\.gz$)|(\.Z$)/) {
+		local($new_csmap) = $curr_csmap_dc;
+		do uncompress_file_to_current_dir($curr_csmap_dc, *new_csmap);
+		$curr_csmap_dc = $new_csmap;
+		$remove_tmp_csmap_dc = 1;
+	    }
+	}
+
+		
+	local($compress_csmap) = 0;
+	local($remove_tmp_csmap) = 0;
+	local($curr_csmap) = "";
+
+	if($product_list{'2A-53-v4'} == 1 || $use_pseudo_cappi == 1 || $product_list{'2A-55'} == 1) {
+	    $curr_csmap = &get_prod_filename("2A-54", $ghdf_file, $qc_uf_file, $gridded_refl_dc_shdf,
+						    $level_type, $in, *csmap_list, 
+						    *csmap_shdf_file_list);
+
+
+
+
+	    # Uncompress csmap if it's compressed and compress it back.
+	    # Uncompress HDF file
+	    
+	    if ($curr_csmap =~ /(\.gz$)|(\.Z$)/) {
+		local($new_csmap) = $curr_csmap;
+		do uncompress_file_to_current_dir($curr_csmap, *new_csmap);
+		$curr_csmap = $new_csmap;
+		$remove_tmp_csmap = 1;
+	    }
+	}
+
+	print STDERR "DEBUG: curr_csmap:$curr_csmap \n" if $DEBUG;
+		     
+	foreach $p (@process_order) {
+		next if ($product_list{$p} != 1);
+
+
+		local($output_dir);
+		local($input_dir);
+		do cd_to_workdir($top_working_dir, $p, $tape_id) 
+			if $level_type eq $granule_type;
+		$output_dir = $top_output_dir.&get_dir_name($p, $tape_id);  # granule
+		$output_dir = &create_tmp_dir($top_tmp_dir, $p)  
+			if $level_type eq $vos_type;
+		$dir = $output_dir;
+		$fullname_outfile = &get_filename($dir, $p, $ghdf_file, 
+						  $qc_uf_file, $gridded_refl_dc_shdf, $level_type, $out);
+		# 2A-54 & 2A-55 requires to specify output_dir explicitly via option.
+		$dir = "" if ($p =~ /2A-55/ || $p =~ /2A-54/ );
+		$outfile = &get_filename($dir, $p, $ghdf_file, 
+					 $qc_uf_file, $gridded_refl_dc_shdf, $level_type, $out);
+
+		$options = $options_list{$p};
+		$options = "$site_specific_opts $options" if ($p eq "2A-53-w" || $p eq "2A-54"   ||
+							      $p eq "2A-55" || $p eq "2A-55-dc");
+
+		# 2A-54 & 2A-55 requires to specify output_dir explicitly via option.
+		$options = "$options -D $output_dir" if ($p =~ /2A-55/ || $p =~ /2A-54/ );
+
+		# Append product name to the end of options for 2A-53-* if
+		# running at granule level.
+		$options = "$options $p" if 
+			($p =~ /2A-53/ && $level_type eq $granule_type);
+
+		local($csmap) = "";
+		local($zr_table_filename) = $zr_table_full_fname;
+		local($gridded_refl_dc) = "";
+
+		if ($p eq "2A-53-w" || $p eq "2A-53-d" || 
+		    $p eq "2A-53-c" || $p eq "2A-53-v4" || $p eq "2A-55") {
+		    $csmap = $curr_csmap;
+		}
+# FIX 2A55 could use csmap_dc
+# NEW use dual-cappi csmap for 2A-53-dc
+		elsif ($p eq "2A-53-dc" )  {
+		    $csmap = $curr_csmap_dc;
+		    $zr_table_filename = $dc_zr_table_full_fname;
+		    $gridded_refl_dc = $curr_gridded_refl_dc;
+		}
+		elsif ($p eq "2A-54-dc") {
+		    $gridded_refl_dc = $curr_gridded_refl_dc;
+		}
+
+	       
+		# NEW instead of $infile pass shdf gridded_refl_dc for singlevos_2A-53-dc and singlevos_2A-54-dc
+
+		print STDERR "DEBUG: prod: $p \ncsmap: $csmap\ngridded_refl_dc_ghdf: $gridded_refl_dc_ghdf\n" if $DEBUG;
+
+
+		if(($p eq "2A-53-dc" || $p eq "2A-54-dc") && $level_type eq $vos_type) {
+		    do process_level2($p, $jobnum, $gridded_refl_dc_shdf ,$outfile, $options, $csmap, 
+				      $zr_table_filename, $gridded_refl_dc, $level_type);
+		}
+		else{
+		    do process_level2($p, $jobnum, $infile, $outfile, $options, $csmap, 
+				      $zr_table_filename, $gridded_refl_dc, $level_type);
+		}
+		# Create images
+		if ($not_report_monitorps == 0 && $level_type eq $vos_type) {
+			local(@path) = split(/\//, $infile);
+			local($date_str, $time_str) =
+				$path[$#path] =~ /^(\d+)\.\d+\.\w+\.\d+\.(\d+)\..*/;
+			local ($yy,$mm,$dd) = $date_str =~ /(\d\d)(\d\d)(\d\d)/;
+			$date_str = "$mm/$dd/$yy";
+			local ($hour,$min) = $time_str =~ /(\d\d)(\d\d)/;
+			$time_str = "$hour:$min";
+			if ($p eq "2A-53-v4") {
+				system("2A-53_hdf2ascii $fullname_outfile 2A-53.ascii");
+				system("send_product 2A-53 $tape_id $jobnum $date_str $time_str $pwd/2A-53.ascii") if (-e "$pwd/2A-53.ascii");
+		    } 
+			if ($p eq "2A-54") {
+				$pwd = $top_working_dir;
+				system("any_to_image150 $infile");
+				system("send_product 1B-51 $tape_id $jobnum $date_str $time_str $pwd/dz_sweep.gif") if (-e "$pwd/dz_sweep.gif");
+				system("send_product 1C-51 $tape_id $jobnum $date_str $time_str $pwd/cz_sweep.gif") if (-e "$pwd/cz_sweep.gif");
+				system("2A-54_hdf2ascii $fullname_outfile 2A-54.ascii") if (-e $fullname_outfile);
+				system("send_product $p $tape_id $jobnum $date_str $time_str $pwd/2A-54.ascii") if (-e "$pwd/2A-54.ascii");
+			} 
+		}
+
+
+		if ($fullname_outfile ne "" && -e $fullname_outfile) {
+		    if ($p eq "2A-54") {
+			$curr_csmap = $fullname_outfile;
+			# 2A-54 product; add to csmap_list (granule) or 
+			# csmap_shdf_file_list (single vos).
+			push(@csmap_list, $fullname_outfile)     
+			    if $level_type eq $granule_type;     # granule 
+			push(@csmap_shdf_file_list, $fullname_outfile) 
+			    if $level_type eq $vos_type;         # single vos
+			$compress_csmap = 1;
+		    }
+		    elsif ($p eq "2A-54-dc") {
+			$curr_csmap_dc = $fullname_outfile;
+			push(@csmap_dc_list, $fullname_outfile)     
+			    if $level_type eq $granule_type;     # granule 
+			push(@csmap_dc_shdf_file_list, $fullname_outfile) 
+			    if $level_type eq $vos_type;         # single vos
+			$compress_csmap_dc = 1;
+		    }
+		    elsif ($p eq "2A-55-dc") {
+			$curr_gridded_refl_dc = $fullname_outfile;
+			push(@gridded_refl_dc_list, $fullname_outfile)     
+			    if $level_type eq $granule_type;     # granule 
+#FIX this for singlevos case
+			push(@gridded_refl_dc_shdf_file_list, $fullname_outfile) 
+			    if $level_type eq $vos_type;         # single vos
+			$compress_gridded_refl_dc = 1;
+		    }
+		    else{
+			if ($level_type eq $granule_type) {
+			    # Compress the product for non-2A-{54,54-dc,55-dc} granule prods only--
+			    # 2A-54 2A-54-dc and 2A-55-dc products will be used for other products.
+			    print STDERR "$this_prog: Compressing $fullname_outfile...\n" if($verbose);
+			    do do_system_call("gzip -f $fullname_outfile");
+			}
+		    }
+		}
+   }
+   # remove tmp file 
+   unlink $curr_csmap if ($remove_tmp_csmap == 1); # Remove tmp file
+   if ($compress_csmap == 1) {
+	   # Compress product
+	   print STDERR "$this_prog: Compressing $curr_csmap...\n" if($verbose);
+	   do do_system_call("gzip -f $curr_csmap");
+   }
+   unlink $curr_csmap_dc if ($remove_tmp_csmap_dc == 1); # Remove tmp file
+   if ($compress_csmap_dc == 1) {
+	   # Compress product
+	   print STDERR "$this_prog: Compressing $curr_csmap_dc...\n" if($verbose);
+	   do do_system_call("gzip -f $curr_csmap_dc");
+   }
+   unlink $curr_gridded_refl_dc if ($remove_tmp_gridded_refl_dc == 1); # Remove tmp file
+   if ($compress_gridded_refl_dc == 1) {
+	   # Compress product
+	   print STDERR "$this_prog: Compressing $curr_gridded_refl_dc...\n" if($verbose);
+	   do do_system_call("gzip -f $curr_gridded_refl_dc");
+   }
+}  # process_some_level2
+		
+			
+sub check_for_enough_disk_space {
+	local($process_level, $curr_input_file, 
+		  $level_type, $prod, $check_for_file_list, @file_list) = @_;
+
+	# Check if there is enough disk space, then return;
+	# otherwise, handle out of disk space as followed:
+	# 1. No alternative dirs files for top output and working dir were
+	#    specified.
+	#    Notify user of the next file to be processed and stop.
+	#
+	# 2. Use the alternatives dirs from the alter. output dirs and alter 
+	#    working dirs files. Change top output dir and top working dir
+	#    appropriately,
+	#
+	#  $prod, $check_for_file_list, @file_list are used if $process_level = $run_prod.
+	#
+
+	local($avail_dkspace_4wking_dir) = &get_available_disk_space($top_working_dir);
+	local($avail_dkspace_output_dir) = &get_available_disk_space($top_output_dir);
+	$min_required_dkspace = 
+		&get_required_disk_space($process_level, $curr_input_file, $level_type,
+								 $prod, $check_for_file_list, @file_list);
+
+
+# Testing
+#if ($test_c %2 == 0) {
+#$min_required_dkspace = 6000000;  # For debug
+#$test_c = 1;
+#$avail_dkspace_4wking_dir = $min_required_dkspace+100;
+#$avail_dkspace_output_dir = $min_required_dkspace+100;
+#}
+#else {$test_c += 1;
+#  }
+
+#print STDERR "min: $min_required_dkspace, avai: $avail_dkspace_4wking_dir, $avail_dkspace_output_dir , curr fiel: $curr_input_file\n";
+
+	local($outofspace) = $NONE_SYSTEM;
+	if ($min_required_dkspace > $avail_dkspace_4wking_dir &&
+		$min_required_dkspace > $avail_dkspace_output_dir) {
+		$outofspace = $WORKING_N_OUTPUT_FILE_SYSTEMS;
+	}
+	elsif ($min_required_dkspace > $avail_dkspace_4wking_dir) {
+		$outofspace = $WORKING_FILE_SYSTEM_ONLY;
+	}
+	elsif ($min_required_dkspace > $avail_dkspace_output_dir) {
+		$outofspace = $OUTPUT_FILE_SYSTEM_ONLY;
+	}
+	if ($outofspace != $NONE_SYSTEM) {
+        print STDERR "$this_prog: OUTOFSPACE.........\n";
+
+		do out_of_dkspace_handler($outofspace, $curr_input_file,
+								  $min_required_dkspace, 
+								  $avail_dkspace_4wking_dir,
+								  $avail_dkspace_output_dir);
+	}
+}  # check_for_enough_disk_space
+
+
+sub get_required_disk_space {
+	local($process_level, $curr_input_file, 
+		  $level_type, $prod, $check_for_file_list, @file_list) = @_;
+
+	# Return the minimum requirement of disk space (blocks) for:
+	#    running w/ the next input file if  $prod = ""
+	#    degranulizing file(s) if $prod != "".
+	#
+	# It is computed as follows (these values are approximations):
+	# The required # is expected to be larger than the actual size.
+	#
+	#    Estimated file size (bytes)
+	# ----------------------------------
+	# 
+	# Based on file: 950802.07.MELB (contains not alot of precipitation)
+	# 1C-51         (HDF) : 45479K
+	#                (UF) : 6429K
+	# 2A-53 (granuled HDF): 582K 
+	#           (svos HDF): 660K
+	# 2A-55 (granuled HDF):	7898K
+	#           (svos HDF): 729K
+	# 2A-54 (granuled HDF): 326K 
+	#           (svos HDF): 720K
+	#
+	# Will double the est. file size when calculating the required size.
+	#
+	# sizes are in blocks
+	
+	%granuled_product_est_dkspace = (
+										  # Product     dkspace (blocks)
+										  '1C-51',      45479,
+										  '2A-53-w',    582,
+										  '2A-53-d',    582,
+										  '2A-53-c',    582,
+										  '2A-53-v4',   582,
+										  '2A-54',      326,
+										  '2A-55',      7898
+										  );
+
+	# size of all single vos files for one granule
+	%vos_product_est_dkspace = (
+									 # Product     dkspace (blocks)
+									 '1C-51',      6429,
+									 '2A-53-w',    660,
+									 '2A-53-d',    660,
+									 '2A-53-c',    660,
+									 '2A-53-v4',   660,
+									 '2A-54',      720,
+									 '2A-55',      729
+									 );
+	local($min_required_dkspace) = 0;
+	if ($process_level eq $run_prod) {
+		$min_required_dkspace = 
+			&cal_required_dkspace_4_level2_processing($level_type);
+	}
+	elsif ($process_level eq $uncompress) {
+		# Want 3 times the actual file size.
+		local($filesize) = &get_filesize($curr_input_file);
+		$min_required_dkspace =  ($filesize * 4) / 1000;
+	}
+	else {
+		$min_required_dkspace = 
+			&cal_required_dkspace_4_degran_hdf_files($prod, 
+													 $check_for_file_list, 
+													 @file_list);
+	}
+
+	return $min_required_dkspace;
+}  # get_required_disk_space
+
+
+sub cal_required_dkspace_4_degran_hdf_files {
+	local($prod, $check_for_file_list, @file_list) = @_;
+	# Return the min required dkspace in blocks for degranulizing one 
+	# hdf file if $check_for_file_list = 0;
+	# a list of hdf files if $check_for_file_list = 1.
+	#
+
+	local($min_required_dkspace) = 0;
+	local($overhead_dkspace) = 400;
+	local($dkspace_1file) =  &cal_required_dkspace_4_dgran_hdf_file($prod);
+
+	if ($check_for_file_list == 1) {
+		# calculate the space required to degran a list of files
+
+		$min_required_dkspace += ($dkspace_1file * $#file_list);
+	}
+	else {
+		$min_required_dkspace += $dkspace_1file;
+	}
+	$min_required_dkspace += $overhead_dkspace;
+	return $min_required_dkspace;
+
+} # cal_required_dkspace_4_degran_hdf_files
+
+
+sub cal_required_dkspace_4_dgran_hdf_file {
+	local($prod) = @_;
+	# Return required space in blocks for degranulizing a specified product.
+
+	local($required_space) = 0;
+	if ($prod ne "") {
+		# Granuled hdf file (uncompress) + singlevos files
+		$required_space = $granuled_product_est_dkspace{$prod} +
+			$vos_product_est_dkspace{$prod};
+	}
+	return $required_space;
+} # cal_required_dkspace_4_dgran_hdf_file
+
+
+sub cal_required_dkspace_4_level2_processing {
+	local($level_type) = @_;
+	# Return  the min requird dkspace in blocks for processing
+	# level2 products with the next input file.
+	# Will double the est. file size when calculating the required size.
+	#
+	# sizes are in blocks
+
+	local($val) = 2;  # double the estimated size
+	local($min_required_dkspace) = 0;
+	local($p);
+	local(%prod_req_dkspace);
+	local($overhead_dkspace);
+	if ($level_type eq $granule_type) {
+		# size of uncompressed 1C HDF file +
+		# size of all 1C UF files
+		$min_required_dkspace += ($granuled_product_est_dkspace{'1C-51'}*$val 
+								  + $vos_product_est_dkspace{'1C-51'}*$val)
+			if &check_if_qc_is_required_by_prods(@process_order) == 1;
+
+		# size of uncompressed granule csmap HDF file +
+		# size of all single vos csmap HDF files
+		$min_required_dkspace += ($granuled_product_est_dkspace{'2A-54'}*$val 
+								  + $vos_product_est_dkspace{'2A-54'}*$val)
+			if (&check_if_csmap_is_required_by_prods(@process_order) == 1 &&
+				$product_list{'2A-54'} == 0) ;
+
+
+        # sum of sizes of all the specified level2 products since
+		# we process all of the specified level2 products for each 
+		# input (1C) file.
+		foreach $p (@process_order) {
+			next if ($product_list{$p} != 1);
+			$min_required_dkspace += ($granuled_product_est_dkspace{$p} * $val);
+		}
+
+		$overhead_dkspace = 800;
+	}
+	else {
+		# single vos level
+		# Input files already exist on disk 
+		# (uncompressed, single vos HDF or uf).
+
+        # sum of sizes of all the specified level2 products since
+		# we process all of the specified level2 products for each 
+		# input (1C) file.
+		foreach $p (@process_order) {
+			next if ($product_list{$p} != 1);
+
+			$min_required_dkspace += ($vos_product_est_dkspace{$p} * $val);
+		}
+		$overhead_dkspace = 600;
+	}
+	$min_required_dkspace += $overhead_dkspace;
+}
+
+
+sub out_of_dkspace_handler {
+	local($outofspace_type, $resume_input_file, $min_dkspace, $avail_dkspace_wking_dir, $avail_dkspace_output_dir) = @_;
+
+	# 1. If no alternative dirs files for top output and working dir were
+	#    specified, Notify user of the next file to be processed and stop.
+	#
+	# 2. Use the alternatives dirs from the alter. output dirs and working dirs
+	#    files. Change top_working_dir, top_tmp_dir, and top_working_dir
+	#    appropriately.
+	#    Copy files (excluding dirs.) from the  working dir to the new 
+	#    working dir.
+	#
+	#
+
+
+	if ($outofspace_type == $WORKING_FILE_SYSTEM_ONLY) {
+		do switch_to_new_working_n_tmp_dir($outofspace_type, $resume_input_file, 
+										   $min_dkspace, 
+										   $avail_dkspace_wking_dir, 
+										   $avail_dkspace_output_dir);
+
+	}
+	elsif ($outofspace_type == $OUTPUT_FILE_SYSTEM_ONLY) {
+		do switch_to_new_output_dir($outofspace_type, $resume_input_file, 
+									$min_dkspace, 
+									$avail_dkspace_wking_dir, 
+									$avail_dkspace_output_dir);
+
+	}
+	elsif ($outofspace_type == $WORKING_N_OUTPUT_FILE_SYSTEMS) {
+		do switch_to_new_working_n_tmp_dir($outofspace_type, $resume_input_file, 
+										   $min_dkspace, 
+										   $avail_dkspace_wking_dir, 
+										   $avail_dkspace_output_dir);
+		do switch_to_new_output_dir($outofspace_type, $resume_input_file, 
+									$min_dkspace, 
+									$avail_dkspace_wking_dir, 
+									$avail_dkspace_output_dir);
+
+	}
+	else {
+		return;
+	}
+
+	print STDERR "$this_prog: Current top working dir: $top_working_dir\n" if($verbose);
+	print STDERR "$this_prog: Current top output dir: $top_output_dir\n" if($verbose);
+	print STDERR "$this_prog: Current top tmp dir: $top_tmp_dir\n" if($verbose);
+
+} #out_of_dkspace_handler
+
+
+sub switch_to_new_working_n_tmp_dir {
+	local ($outofspace_type, $resume_input_file, 
+		   $min_dkspace, 
+		   $avail_dkspace_wking_dir, 
+		   $avail_dkspace_output_dir) = @_;
+
+	local($new_top_working_dir_prefix) = shift @alter_top_working_dirs;
+
+	print STDERR "$this_prog: Out of disk space for the current working dir <$top_working_dir>.\n";
+	
+
+	do out_of_dkspace_exit($resume_input_file, $min_dkspace, $avail_dkspace_wking_dir, $avail_dkspace_output_dir)
+		if ($new_top_working_dir_prefix eq "");
+
+
+	# Check if the alter file system has enough space
+	local ($avail_dkspace_for_new_dir) = 
+		&get_available_disk_space($new_top_working_dir_prefix); # In blocks
+	if ($min_required_dkspace > $avail_dkspace_for_new_dir) {
+		print STDERR "$this_prog: Alternative top working file system <$new_top_working_dir_prefix> doesnot have enough space.\n";
+		do out_of_dkspace_exit($resume_input_file, $min_dkspace, $avail_dkspace_for_new_dir, $avail_dkspace_output_dir)
+	}
+
+	# Add old working and temp dirs to list; they will be removed when 
+	# processing is finished.
+	push(@dirs_to_be_removed, $top_tmp_dir);
+	push(@dirs_to_be_removed, $top_working_dir);
+
+	# Add to save list
+	push(@save_top_tmp_dirs, $top_tmp_dir);
+
+	# set new dirs
+	$top_working_dir_prefix = $new_top_working_dir_prefix;
+	$top_working_dir = "$top_working_dir_prefix$top_working_dir_suffix";
+	$top_tmp_dir_prefix = $top_working_dir_prefix;
+	$top_tmp_dir = "$top_tmp_dir_prefix$top_tmp_dir_suffix";
+	
+	do create_dir($top_tmp_dir, 0, 1);
+	do create_dir($top_working_dir, 0, 1);
+	# Move all files from the working dir to the new working dir
+	do move_files($old_top_working_dir, $top_working_dir, "*");
+
+	chdir $top_working_dir;
+
+}
+
+sub switch_to_new_output_dir {
+	local ($outofspace_type, $resume_input_file, 
+		   $min_dkspace, 
+		   $avail_dkspace_wking_dir, 
+		   $avail_dkspace_output_dir) = @_;
+
+	print STDERR "$this_prog: Out of disk space for top output dir <$top_output_dir>.\n";
+	local($new_top_output_dir) = shift @alter_top_output_dirs;
+	do out_of_dkspace_exit($resume_input_file, $min_dkspace, $avail_dkspace_wking_dir, $avail_dkspace_output_dir)
+		if ($new_top_output_dir eq "");
+
+
+# Check if the alter file system has enough space
+	local ($avail_dkspace_for_new_dir) = 
+		&get_available_disk_space($new_top_output_dir); # In blocks
+	if ($min_required_dkspace > $avail_dkspace_for_new_dir) {
+		print STDERR "$this_prog: Alternative top output file system <$new_top_output_dir> doesnot have enough space.\n";
+		do out_of_dkspace_exit($resume_input_file, $min_dkspace, $avail_dkspace_wking_dir, $avail_dkspace_for_new_dir)
+	}
+
+	local($old_top_output_dir) = $top_output_dir;
+	$top_output_dir = $new_top_output_dir;
+	do create_dir($top_output_dir, 0, 1);  # don't want to remove the
+	                                       # contents if it exists --
+                                           # dirs for products under 
+	                                       # top_output_dir are already
+	                                       # created at the beginning.
+
+	local($p);
+	foreach $p (@process_order) {
+		next if ($product_list{$p} != 1);
+		local($dir) = $top_output_dir.&get_dir_name($p, $tape_ie);
+		print STDERR "$this_prog: Will now produce $p products in $dir ...\n" if($verbose);
+	}
+}
+
+
+sub move_files {
+	local($from_dir, $to_dir, $files) = @_;
+	# Move files (excluding dirs) from $from_dir to $to_dir
+	#
+
+	if ($from_dir eq "" || $to_dir eq "") {return;}
+	# Do 'cp' then 'rm' instead of 'mv' since 'mv' move everything 
+	# including dir(s).move_files
+	#
+	do do_system_call("cp $from_dir$files $to_dir; rm $from_dir* > /dev/null 2>&1", "");
+}
+
+
+sub out_of_dkspace_exit {
+	# Can't continue -- there is not enough space.
+	# Send e-mail to user and exit.
+	local($resume_input_file, $min_required_dkspace, $avail_dkspace_wking_dir, $avail_dkspace_output_dir) = @_;
+
+
+	local($msg);
+	# Notify user -- via e-mail
+	if ($resume_input_file ne "") {
+		local($resume_mesg_str) = "\nYou may resume the production by running this program again using the following information: \n\tStart input file:  $resume_input_file\n\tDonot specify level_1 on the command line.";
+		
+
+		$msg= "$this_prog: ERROR: Insufficient disk space (Estimated required space for processing the next file: $min_required_dkspace; available working space: $avail_dkspace_wking_dir; available space for output: $avail_dkspace_output_dir--Space is in blocks).\n $resume_mesg_str ";
+	}
+	else {
+		$msg = "$this_prog: ERROR: Insufficient disk space (Estimated required space to degranulize HDF file(s): $min_required_dkspace;available working space: $avail_dkspace_wking_dir; available space for output: $avail_dkspace_output_dir--Space is in blocks).\n ";
+	}
+	print STDERR "$msg\n";
+	if ($yes_send_mail) {
+		local($send_mail_cmd) = "echo \" $msg\"|mail -s \"Status for $this_prog for '$tape_id' on '$device'\" $ENV{'USER'}";
+		do do_system_call($send_mail_cmd, "");
+	}
+
+	do clean_up("", 0);
+	do send_status_msg($jobnum, $prog, $infile, $ABORTED_STR) if $prog ne "";	
+	do set_products_status(*products_status, $ABORTED_STR, @active_prods_list);
+
+	if ($update_inventory_db) {
+		# Send info of each file for all products to GV inventory DB.
+		do send_product_info_to_inventory($tape_id, *active_prods_list, *options_list,
+								  $prod_processed_num, *products_status,
+								  "");
+	}
+	
+	do do_exit($OUT_OF_SPACE_CODE);
+}
+
+
+sub granulize_all_level2_products {
+	local($top_dir, $qc_hdf_file, $csmap_ghdf_file) = @_;
+	
+	foreach $p (@process_order) {
+		next if ($product_list{$p} != 1);
+		# Get qc hdf dir
+		local(@qc_path) = split(/\//, $qc_hdf_file);
+		$qc_path[$#qc_path] = "";    # remove fname 
+		local($qc_hdf_dir) = join('/', @qc_path);
+		$qc_hdf_dir = "./" if ($qc_hdf_dir eq "");
+
+		do granulize_level2($top_dir, $qc_hdf_dir, $p, 
+							$qc_hdf_file, $csmap_ghdf_file);
+	}
+	
+}
+
+sub granulize_level2 {
+	local($top_dir, $qc_hdf_dir, $p, $qc_hdf_file, $csmap_ghdf_file) = @_;
+# This routine implodes all of product's single vos hdf files in product's
+# temporary dir. to  hour-granuled hdf file(s).  
+# It will create empty granule product if there is no single vos hdf file there
+# Recognized $p are: 2A-54, 2A-53, and 2A-55.
+#
+
+	local($p_type) = "";
+	$p_type = "4" if $p =~ /2A-54/;
+	$p_type = "3" if $p =~ /2A-53/;
+	$p_type = "5" if $p =~ /2A-55/;
+	return if $p_type eq "";
+
+	# Place input files, their gen. date, and program's options to a tmp file.
+	#
+	local($param_info_fname) = "$top_tmp_dir/param_info.dat";
+	do create_param_info_file_4level2($qc_hdf_file, $csmap_ghdf_file,
+									  $p, $param_info_fname);
+
+
+	local($input_dir) = &get_tmp_dir($top_tmp_dir, $p);
+
+	# The granule HDF file is placed in $top/gvs_$p_$tapeid 
+	local($prod_dir) = &get_dir_name($p, $tape_id);
+	local($output_dir) = $top_output_dir.$prod_dir;
+
+	# Convert all of single VOS hdf files in $input_dir to granulized files.
+	# The single VOS files may either be compressed or uncompressed.
+	# Program will remove the processed singlevos files and compress the 
+	# granuled file (s) as it is created.
+	
+	# Note: The next command only works if all singlevos files reside in 
+	#       the same directory. 
+	# Move all of singlevos files from all other product dirs to $input_dir
+	# (This case occurs only when out of disk space had been encountered.
+
+	do move_all_shdf_files_to_dir($p, $input_dir);
+
+	local($cmd);
+	if (&no_singlevos_hdf_file($p_type, $input_dir)) {
+		# Create empty granule product
+		local($outfile) = &get_filename($output_dir, $p, $qc_hdf_file, "", "",
+										$granule_level, $out);
+		local($prog) = "level_2_create_empty_granule_hdf";
+		$cmd = "$prog $verbose_opt $metadata_file_opts{$p} -p $param_info_fname $p_type $qc_hdf_file $outfile";
+		print STDERR "$this_prog: Executing ... $cmd\n" if($verbose);
+		do send_status_msg($granule_jobnum, "$prog $p_type", $qc_hdf_file, $stat_array[3]);
+		do set_products_status(*products_status, $stat_array[3], ($p));
+		local($rc) = do do_system_call($cmd, "");
+		do send_status_msg($granule_jobnum, "$prog $p_type", $qc_hdf_file, $stat_array[$rc]);
+		print STDERR "$this_prog: Compressing $outfile...\n" if($verbose);
+		do do_system_call("gzip -f $outfile");
+		do set_products_status(*products_status, $stat_array[$rc], ($p));
+	}
+	else {
+		local($prog) = "level_2_singlevos_hdf_to_ghdf";
+		# Granulize singlevos files-- compress product
+		$cmd = "$prog $verbose_opt -r -c -p $param_info_fname -q $qc_hdf_dir -i $input_dir -o $output_dir $p_type READ_FROM_DIR";
+		print STDERR "$this_prog: Executing ... $cmd\n" if($verbose);
+		do send_status_msg($granule_jobnum, "$prog $p_type", $qc_hdf_file, $stat_array[3]);
+		do set_products_status(*products_status, $stat_array[3], ($p));
+		local($rc) = do do_system_call($cmd, "");
+		do send_status_msg($granule_jobnum, "$prog $p_type", $qc_hdf_file, $stat_array[$rc]);
+		do set_products_status(*products_status, $stat_array[$rc], ($p));
+
+	}
+
+
+	unlink($param_info_fname) if (-e $param_info_fname);
+
+} # granulize_level2
+
+sub no_singlevos_hdf_file {
+	local($p_type, $input_dir) = @_;
+	# Check if there is any single VOS hdf file for $p_type in $input_dir.
+	# Return 1 if yes; 0 for no.
+	# p_type: 3 == 2A-53; 4 == 2A-54; 5 == 2A-55
+
+	return 1 if ($input_dir eq "" || !(-d $input_dir));
+	local($prod_pref)="";
+	if ($p_type eq "3") {
+		$prod_pref = "2A53";
+	}
+	elsif ($p_type eq "4") {
+		$prod_pref = "2A54";
+	}
+	elsif ($p_type eq "5") {
+		$prod_pref = "2A55";
+	}
+	open(FILE, "ls -1 $input_dir/$prod_pref"."*.hdf* |") || return 0;
+	local(@files) = <FILE>;
+	close(FILE);
+
+	return 1 if ($#files < 0);
+	return 0;
+} # no_singlevos_hdf_file 
+
+
+sub move_all_shdf_files_to_dir {
+	local($prod, $to_dir) = @_;
+	# Move all single vos hdf file from each prod's alter. dir. 
+	# to $to_dir.
+	
+	local(@tmp_top_tmp_dirs) = @save_top_tmp_dirs;
+	while (@tmp_top_tmp_dirs) {
+		local($dir) = shift @tmp_top_tmp_dirs;
+		
+		local($prod_dir) = &get_tmp_dir($dir, $prod);
+		
+		# Move files (*.hdf) from $prod_dir  to $to_dir
+		do move_files($prod_dir, $to_dir, "*.$shdf_file_ext*");
+	}
+
+
+}# move_all_shdf_files_to_dir
+
+sub check_status {
+	local($status, $cmd) = @_;
+	# Returns 0 for failure
+	#         1 for successful
+	# Calls doexit_handler upon interrupt.
+	local($rc) = 1;
+	if ($status == 0) {			# 
+		$rc = 1;
+	}
+	elsif (&interrupted($status)) {
+
+		do clean_up();
+		do doexit_handler('INT');   # this exit the program
+	}
+	elsif (&is_severe_error($status)) {
+		print STDERR "$this_prog: Failed executing: $cmd\n" if($verbose);
+		$rc = 0; # failed
+	}
+	elsif (&out_of_space($status)) {
+		do level1_out_of_dkspace_handler();   # this exit the program
+	}
+	return $rc;
+} #check_status
+
+
+sub degranulize_level2{
+	# Explodes granulized hdf file to single VOS HDF file(s) for level 2
+	# Returns a list of single HDF files (full filenames)
+	local($ghdf_file, $out_dir, $p) = @_;
+
+	return () unless ($ghdf_file ne "" && -e $ghdf_file);
+	local($p_type) = "4" if $p =~ /2A-54/;
+	local($p_type) = "3" if $p =~ /2A-53/;
+	local($rc) = 3;;
+	local($prog) = "level_2_ghdf_to_singlevos_hdf";
+	local($save_ghdf_file) = $ghdf_file;
+	# Uncompress HDF file
+	if ($ghdf_file =~ /(\.gz$)|(\.Z$)/) {
+		local($new_ghdf_file) = $ghdf_file;
+		do uncompress_file_to_current_dir($ghdf_file, *new_ghdf_file);
+		$ghdf_file = $new_ghdf_file;
+	}
+	$ghdf2shdf_jobnum++;					
+	$curr_p = $prog;
+	$curr_fname = $ghdf_file;
+	$curr_jobnum = $granule_jobnum;
+
+
+	# Determine which products need this $ghdf_file and update those
+	# products' status.
+	local(@prods_list) =();
+	if ($p =~ /2A-54/) {
+		push(@prods_list, "2A-53-w") if ($product_list{"2A-53-w"});
+		push(@prods_list, "2A-53-d") if ($product_list{"2A-53-d"});
+		push(@prods_list, "2A-53-c") if ($product_list{"2A-53-c"});
+		push(@prods_list, "2A-53-v4") if ($product_list{"2A-53-v4"});
+		push(@prods_list, "2A-55") if ($product_list{"2A-55"});
+	}
+	do set_products_status(*products_status, $stat_array[$rc], @prods_list);
+	do send_status_msg($granule_jobnum, $prog, $ghdf_file, $stat_array[$rc]);	
+	local($cmd) = "$prog $verbose_opt -d $out_dir $p_type $ghdf_file|";
+	print STDERR "$this_prog: Executing ... $cmd\n" if($verbose);
+
+	open(SHDF_FILES, $cmd) || 
+		(do clean_up() && die "Couldn't run $cmd: $!\n");
+	@shdf_files = <SHDF_FILES>;
+	close(SHDF_FILES);
+	local($status) = $? >> 8;
+	$rc = &check_status($status, $cmd);
+	do send_status_msg($granule_jobnum, $prog, $ghdf_file, $stat_array[$rc]);
+
+	do set_products_status(*products_status, $stat_array[$rc], @prods_list);
+	$curr_p = "";
+	$curr_fname = "";
+	# remove tmp HDF file 
+    unlink $ghdf_file if ($save_ghdf_file ne $ghdf_file);
+
+	return @shdf_files;
+} #degranulize_level2
+
+sub degranulize_qc_hdf {
+	# splits and converts granuled hdf file to UF file(s) for 1C-51 
+	# Returns a list of UF files
+	local($ghdf_file, $dir) = @_;
+	local(@uf_files);
+
+	return @uf_files unless ($ghdf_file ne "" && -e $ghdf_file);
+
+	local($rc) = 3;
+	local($p) = "level_1_ghdf_to_singlevos_uf";
+	local($compressed) = 0;
+
+	# Uncompress HDF file
+	if ($ghdf_file =~ /(\.gz$)|(\.Z$)/) {
+		local($new_ghdf_file) = $ghdf_file;
+		do uncompress_file_to_current_dir($ghdf_file, *new_ghdf_file);
+		$ghdf_file = $new_ghdf_file;
+		$compressed = 1;
+	}
+	$hdf2uf_jobnum++;
+	$curr_p = $p;
+	$curr_fname = $ghdf_file;
+	$curr_jobnum = $granule_jobnum;
+    # Determine which products need this $ghdf_file and update those
+    # products' status.
+	local(@prods_list) =();
+	push(@prods_list, "2A-53-w") if ($product_list{"2A-53-w"});
+	push(@prods_list, "2A-53-d") if ($product_list{"2A-53-d"});
+	push(@prods_list, "2A-53-c") if ($product_list{"2A-53-c"});
+	push(@prods_list, "2A-53-v4") if ($product_list{"2A-53-v4"});
+	push(@prods_list, "2A-54") if ($product_list{"2A-54"});
+	push(@prods_list, "2A-55") if ($product_list{"2A-55"});
+	do set_products_status(*products_status, $stat_array[$rc], @prods_list);
+
+	do send_status_msg($granule_jobnum, $p, $ghdf_file, $stat_array[$rc]);	
+
+	local($cmd) = "$p $verbose_opt -u $dir $ghdf_file|";
+	print STDERR "$this_prog: Executing ... $cmd\n" if($verbose);
+	open(UF_FILES, $cmd) || 
+		(do clean_up() && die "Couldn't run $cmd: $!\n");
+	@uf_files = <UF_FILES>;
+	close(UF_FILES);
+	local($status) = $? >> 8;
+	$rc = &check_status($status, $cmd);
+	do send_status_msg($granule_jobnum, $p, $ghdf_file, $stat_array[$rc]);	
+
+	do set_products_status(*products_status, $stat_array[$rc], @prods_list);
+
+	$curr_p = "";
+	$curr_fname = "";
+	# Remove tmp HDF file back
+	unlink $ghdf_file if ($compressed == 1);
+	return @uf_files;
+}
+
+
+sub send_finish_stat_for_products {
+	local(@prods) = @_;
+	local($p);
+
+	while (@prods) {
+		$p = shift @prods;
+
+#		$exec = $programs{$p} if $run_level2_at_singlevos == 0;
+#		$exec = $singlevos_programs{$p} if $run_level2_at_singlevos == 1;
+#		do send_status_msg($curr_jobnum+1, $exec, "NOFILE", $stat_array[4])
+		do send_status_msg($curr_jobnum+1, $p, "NOFILE", $stat_array[4])
+			if ($product_list{$p} == 1);
+	}
+}
+
+sub level2_product_specified {
+    if (($product_list{'2A-53-w'} == 1)    ||
+	($product_list{'2A-53-c'} == 1)    ||
+	($product_list{'2A-53-d'} == 1)    ||
+	($product_list{'2A-53-v4'} == 1)    ||
+	($product_list{'2A-53-dc'} == 1)  ||
+	($product_list{'2A-54'} == 1)      ||
+	($product_list{'2A-54-dc'} == 1) ||
+	($product_list{'2A-55'} == 1) ||
+	($product_list{'2A-55-dc'} == 1)) {
+    
+    return 1;
+}
+return 0;
+}
+
+
+sub create_prod_alter_dirs {
+	local($prod_dir_suffix, $options_file) = @_;
+	# Create $dir/$prod_dir_suffix for each dir from the alternative 
+	# output dirs list
+	local($i);
+	for ($i=0;$i <= $#alter_top_output_dirs; $i++) {
+		local($dir) = "$alter_top_output_dirs[$i]$prod_dir_suffix";
+		do create_dir($dir, 1, 0);
+		#copy options file to product's directory
+		do copy_option_file($options_file, $dir);
+	}
+}
+
+sub init_prod_dir {
+	local($top_dir, $product, $tape_id, $options_file) = @_;
+
+	# create directory to run product.
+	local($dir_suffix) = &get_dir_name($product, $tape_id);
+	local($dir) = $top_dir.$dir_suffix;
+	do create_dir($dir, 1, 0);
+
+	# Create $dir/$prod_dir_suffix for each dir from the alternative 
+	# output dirs list
+	do create_prod_alter_dirs($dir_suffix, $options_file);
+
+	#copy options file to product's directory
+	do copy_option_file($options_file, $dir);
+	
+	print STDERR "$this_prog: Will produce $product products in $dir ...\n" if($verbose);
+
+}
+
+sub copy_option_file {
+	local($options_file, $dir) = @_;
+
+	return if ($options_file eq "" || !(-f $options_file) 
+			   || $dir eq "" || !(-d $dir));
+
+	# remove old option file if exists--sgi doesnot support 'cp -f'
+	local($new_fname) = "$dir$option_filename";
+	if (-e $new_fname) {
+		do do_system_call("rm -f $new_fname", "");
+	}
+	do do_system_call("cp $options_file $new_fname", "");
+
+}
+sub cd_to_workdir {
+        local($top_dir, $product, $tape_id) = @_;
+        local($dir) = $top_dir.&get_dir_name($product, $tape_id);
+        chdir($dir);
+		return $dir;
+}							
+
+
+
+
+sub exec_command {
+	local($prod, $jobnum, $cmd, $infile) = @_;
+	# Returns 0 for failure
+	#         1 for successful
+	# This routine will exit the program upon interruption.
+
+	local($rc) = 3;
+#	local($p, $t1) = $cmd =~ /^(\S+) (.*)$/;
+	local($p) = $prod;
+	$curr_p = $p;
+	$curr_fname = $infile;
+	$curr_jobnum = $jobnum;
+	do send_status_msg($jobnum, $p, $infile, $stat_array[$rc]);	
+
+	do set_products_status(*products_status, $stat_array[$rc], ($p));
+
+	print STDERR "$this_prog: Executing ... $cmd\n" if($verbose);
+	$rc = &do_system_call($cmd, $infile);
+
+	$curr_p = "";
+	$curr_fname = "";
+	return $rc;
+} #exec_command
+
+sub untar_file {
+	local($filename) = @_;
+	
+	# make tmp/$filename directory and copy data file there. Do work there.
+	local($dir) = "tmp/".$filename;
+	do create_dir($dir, 0, 1);
+	do do_system_call ("mv $filename $dir", "");
+	chdir ($dir);
+	do do_system_call("tar xf $filename", "");
+	unlink $filename;
+#	opendir(THISDIR, ".");
+#	@file_list = grep(!/^\./, readdir(THISDIR));
+#	closedir(THISDIR);
+#	foreach $file (@file_list) {
+#		system ("gunzip -q ".$file);
+#	}
+	chdir("../../");
+}
+
+
+sub process_level2 {
+	local($product, $jobnum, $infile, $outfile, $options, 
+		  $auxfile1, $auxfile2, $auxfile3, $level_type) = @_;
+# Process level2 program and compress the output.
+# Everyone needs $jobnum, $infile, $options, $outfile
+# 2A-54 needs  $qc ($infile), NULL $auxfile1 and $auxfile2
+# 2A-53-* and 2A-55 need $qcfile ($infile), $csmap ($auxfile1), 
+#  NULL $auxfile2, except 2A-53-v4.
+# 2A-53-v4 and 2A-53-dc needs zr_table ($auxfile2) if level_type = vos_type
+# Only granule 2A-53-dc and 2A-54-dc need ghdf gridded_refl_dc ($auxfile3)
+# Send status msg to monitorps
+# Send info to the GV inventory DB.
+
+	if ($DEBUG) {
+		print STDERR "DEBUG: Entered process_level2\n";
+		print STDERR "auxfile1= $auxfile1\n";
+		print STDERR "auxfile2= $auxfile2\n";
+		print STDERR "auxfile3= $auxfile3\n";
+	}
+
+	local($rc) = 0;
+	local($msg) = "";
+	# Check for correct number of input file(s) and they exist
+
+	if ($infile eq "" || !(-e $infile)) {
+		$msg = "$this_prog: Unable to produce $product. Infile <$infile> is not specified or doesnot exist.";
+		$rc = -1;
+		goto ERROR;
+	}
+
+	if(($product =~ /2A-53/ || $product eq "2A-55") && 
+	   ($auxfile1 eq "" || !(-e $auxfile1) )) {
+
+		$msg = "$this_prog: Unable to produce $product. CSmap <$auxfile1> is not specified or doesnot exist.";
+		$rc = -1;
+		goto ERROR;
+	}
+	
+
+#NEW
+	if (($product eq "2A-53-dc" || $product eq "2A-54-dc") && ($auxfile3 eq "" || !(-e $auxfile3))) {
+	    $msg = "$this_prog: Unable to produce $product. Gridded refl. <$auxfile3> is not specified or doesnot exist.";
+	    $rc = -1;
+	    goto ERROR;
+	    
+	}
+
+
+#NEW
+#2A-53-dc gets its zr table filename from 2A-54-dc
+		
+# Determine the zr_table filename.  This is done when it is 
+# not specified on the command line (ie. when using the default)
+# by extracting time information from the uf filename and calling
+# a program 'grep_runtime_parm.pl mm/dd/yy hh:mm'.  The string written
+# to stdout are the runtime parameters; typically, only the actual
+# ZR file is specified.  ZR file names can be anything, but, typically
+# they'll have the form: *_<site>.zr.  Where '*' is typically, 'dual' or
+# 'dual_jan98'.  The *.zr files are normally located in /usr/local/trmm/GVBOX/data,
+# ($gvs_data_path).
+#
+# Note: '-z ZR_table' is a preferred way to used this program, however,
+#       this program will automatically generate a ZR filename when one
+#       is not specified; so TSDIS can run w/ a simpler interface.
+#
+# The runtime file used has the form:
+#    runtime_2A-53_<site>.txt
+#
+# The runtime*.txt files are normally located in /usr/local/trmm/GVBOX/data or $gvs_data_path.
+#
+#    For site = MELB, DARW, KWAJ, GUAM, ISBN, SAOP, THOM, TWWF, HSTN
+	if($product =~ "2A-53-dc" && $auxfile2 eq "") {
+	    local(@tmp_csmap) = split('/',$auxfile1);
+	    local($tmp_csmap) = $tmp_csmap[$#tmp_csmap];
+
+ 	    ($pref, $z_date, $z_gran, $z_site, $z_ver, $z_time) = split(/\./, $tmp_csmap);
+	    # Cannonicalize the date and time.
+	    $z_date =~ s/(\d\d)(\d\d)(\d\d)/$2\/$3\/$1/;
+	    $z_time =~ s/(\d\d)(\d\d)/$1:$2/;
+
+	    $runtime = "$gvs_data_path/runtime_2A-53_"."$z_site".".txt";
+	    if (-e $runtime) {
+		$cmd = "grep_runtime_parm.pl $z_date $z_time < $runtime";
+		$auxfile2 = `$cmd`;
+		chop $auxfile2;
+		$auxfile2 =~ s/[ ]*-z\s+//; # Really don't want the '-z' string.
+		if ($auxfile2 eq "") {
+		    $auxfile2 = "$gvs_data_path/dual.zr";
+		} else {
+		    $auxfile2 = "$gvs_data_path/$auxfile2" if ($auxfile !~ /^\//);
+		}
+	    } else {
+		$auxfile2 = "$gvs_data_path/dual.zr";
+	    }
+	}
+
+# 2A-53-v4 gets its zr_table name from the uf file
+	elsif ($product =~ /2A-53-v4/ && $auxfile2 eq "") {
+		# Construct the command 'grep_runtime_parm.pl'
+		
+		local($uf_file) = $infile;
+		@uf_file = split(/\//, $uf_file);
+        $parts = $uf_file[$#uf_file];
+		($z_date, $z_gran, $z_site, $z_ver, $z_time) = split(/\./, $parts);
+# Cannonicalize the date and time.
+		$z_date =~ s/(\d\d)(\d\d)(\d\d)/$2\/$3\/$1/;
+		$z_time =~ s/(\d\d)(\d\d)/$1:$2/;
+		$runtime = "$gvs_data_path/runtime_2A-53_"."$z_site".".txt";
+		if (-e $runtime) {
+			$cmd = "grep_runtime_parm.pl $z_date $z_time < $runtime";
+			$auxfile2 = `$cmd`;
+			chop $auxfile2;
+			$auxfile2 =~ s/[ ]*-z\s+//; # Really don't want the '-z' string.
+			if ($auxfile2 eq "") {
+				$auxfile2 = "$gvs_data_path/dual.zr";
+			} else {
+				$auxfile2 = "$gvs_data_path/$auxfile2" if ($auxfile !~ /^\//);
+			}
+		} else {
+			$auxfile2 = "$gvs_data_path/dual.zr";
+		}
+	    }
+    
+
+	$auxfile1 = "" if ($product !~ /2A-53/ && $product ne "2A-55");
+	$auxfile2 = "" if (($product !~ /2A-53-v4/ && $product !~ /2A-53-dc/) || $level_type eq $granule_type);
+#NEW only use $auxfile3 if granule and 2A-53-dc or 2A-54-dc
+	$auxfile3 = "" if (($product !~ /2A-53-dc/ && $product !~ /2A-54-dc/) || $level_type eq $vos_type );
+
+	local($executable) = $programs{$product} if $level_type eq $granule_type;
+	local($executable) = $singlevos_programs{$product} if $level_type eq $vos_type;
+	local($second);
+
+# First  parameter is a job# counter.
+# Second parameter is the system command.
+# Third  parameter is just for 'send_status'.
+	local($first)  = $jobnum;
+#NEW
+	$second = "$executable $options $infile $auxfile1 $auxfile2 $auxfile3 $outfile";
+
+	if ($DEBUG) {
+		print STDERR "DEBUG:second$second\n";
+		print STDERR "$options\n";
+		print STDERR "$infile\n";
+		print STDERR "auxfile1 = '$auxfile1'\n";
+		print STDERR "auxfile2 = '$auxfile2'\n";
+		print STDERR "auxfile3 = '$auxfile3'\n";
+		print STDERR "$outfile\n";
+	}
+
+
+	local($third)  = $infile;
+	$rc = do exec_command($product, $first, $second, $third);
+	do send_status_msg($jobnum, $product, $infile, $stat_array[$rc]);
+	do set_products_status(*products_status, $stat_array[$rc], ($product));
+	return;
+
+ERROR:
+	print STDERR "$msg\n" if($verbose);
+    do send_status_msg($jobnum, $product, $infile, $stat_array[$rc+1]);
+	do set_products_status(*products_status, $stat_array[$rc+1], ($product));
+    return;
+
+} #process_level2
+
+
+sub clean_up {
+
+	# Remove top tmp and working dir assuming that they are unique to this prog.
+	chdir ($save_curr_dir);
+	
+	while (@dirs_to_be_removed) {
+		local($dir) = shift @dirs_to_be_removed;
+		do do_system_call("rm -rf $dir > /dev/null 2>&1", "") if
+			(-d $dir) ; # 
+	}
+
+	do do_system_call("rm -rf $top_tmp_dir > /dev/null 2>&1", "") if $top_tmp_dir ne ""; # 
+	do do_system_call("rm -rf $top_working_dir > /dev/null 2>&1", "") if $top_working_dir ne ""; # 
+	do do_system_call("rm -rf $top_working_dir_prefix2 > /dev/null 2>&1", "") if $top_working_dir_prefix2 ne ""; # 
+
+	# Remove dirs created for products under alternative dirs that do not contain file
+	do remove_empty_dirs_for_level2_prods();
+	do remove_empty_dirs_for_level1_prods();
+
+} #clean_up 
+
+sub remove_empty_dirs_for_level2_prods {
+	# Remove empty alter. dirs for each of level2 prods
+
+	local($prod);
+
+	foreach $prod (keys(%programs)) {
+		do remove_empty_dirs_for_level2_prod($prod) 
+			if ($product_list{$prod} == 1 &&
+				$prod ne "level_1");
+
+	}
+}
+
+sub remove_empty_dirs_for_level1_prods {
+	# Remove empty alter. dirs for level1 product
+
+	local($i);
+	for ($i = 0; $i <= $#save_alter_top_output_dirs; $i++) {
+		do remove_empty_dirs_for_level1_prods_in_dir($save_alter_top_output_dirs[$i]);
+	}
+	do remove_empty_dirs_for_level1_prods_in_dir($save_top_output_dir);
+}
+
+
+
+sub remove_empty_dirs_for_level1_prods_in_dir {
+	local($top_dir) = @_;
+
+	return if $top_dir eq "";
+	local(@level1_suffixes) = ($dir_1C51_UF_suffix, 
+							   $dir_1B51_suffix, $dir_1C51_suffix);
+	local($j);
+
+	for ($j = 0; $j <= $#level1_suffixes; $j++) {
+		local($prod_dir) = $top_dir.$level1_suffixes[$j];
+		local($prod_type) = "1";
+		$prod_type = "uf"
+			if ($level1_suffixes[$j] eq $dir_1C51_UF_suffix);
+		do do_system_call("rm -rf $prod_dir >& /dev/null", "")
+			if (&dir_has_no_prod($prod_dir, $prod_type, "level_1"));
+	}
+	# Level 1 dir where 1C,1B,UF are under
+	local($dir) = $top_dir.$dir_level1_suffix;
+
+	do do_system_call("rm -rf $dir >& /dev/null", "")
+		if (&dir_is_empty($dir, $option_filename));
+}
+
+sub remove_empty_dirs_for_level2_prod {
+	#
+	local($prod) = @_;
+	# Remove empty dirs for this prod.
+
+	local($i);
+
+	return if ($prod eq "level_1");
+	for($i=0; $i <= $#save_alter_top_output_dirs; $i++) {
+		do remove_empty_dirs_for_level2_prod_in_dir($save_alter_top_output_dirs[$i], $prod);
+	}
+	do remove_empty_dirs_for_level2_prod_in_dir($save_top_output_dir, $prod);
+}
+
+sub remove_empty_dirs_for_level2_prod_in_dir {
+	local($top_dir, $prod) = @_;
+	return if $top_dir eq "";
+
+	local($prod_dir) = $top_dir.&get_dir_name($prod, $tape_id);
+	do do_system_call("rm -rf $prod_dir >& /dev/null", "")
+		if (&dir_has_no_prod($prod_dir, "2", $prod));
+}
+
+
+sub dir_is_empty {
+	local($dir, $except_file) = @_;
+	#Return 1 if dir is empty or contains $except_file; 0, otherwise
+
+	return 0 if $dir eq "";
+	opendir(THISDIR, $dir) || return 0;
+	local(@files) = grep(!/^\.\.?$/, readdir(THISDIR));
+    closedir(THISDIR);
+    return 1 if ($#files < 0);
+
+	
+    return 1 if ($#files == 0 && $files[0] eq $except_file);
+    return 0;
+}
+
+sub dir_has_no_prod {
+	local($prod_dir, $prod_level, $prod) = @_;
+	# Return 0 if dir contains files end with 2*$ghdf_file_ext* for level2 
+	#                                         1*$ghdf_file_ext|1*$uf_file_exe* 
+	# for level1 product;                                     
+	# 1, otherwise.
+	#
+	return 0 if $prod_dir eq "";
+	opendir(THISDIR, $prod_dir) || return 0;
+	local($file_ext) = $ghdf_file_ext;
+	$file_ext = $uf_file_ext if $prod_level eq "uf";
+	local($prod_pref) = "1";
+    $prod_pref = "2" if $prod_level eq "2";
+
+	local(@prod_files) = grep(/$prod_pref.+\.$file_ext.*/, readdir(THISDIR));
+
+    closedir(THISDIR);
+
+    return 0 if ($#prod_files >= 0);
+    return 1;												 
+
+}
+
+
+
+sub get_filename {
+	local($top_dir, $product, $ghdf_file, $qc_uf_file, $gridded_refl_dc_shdf, $type, $in_or_out) = @_;
+	# ghdf_file name: [/path/]????.yymmdd.vos#.site_char.ver#.HDF*
+	# qc_uf_file name: [/path/]yymmdd.vos#.site.ver#.hhmm.uf*.  This file
+	# is only needed if type is vos_type.
+	# Returns filename including pathname.
+
+	if ($product ne "2A-53-d" && $product ne "2A-53-w" && 
+		$product ne "2A-53-c" && $product ne "2A-53-v4"  && $product ne "2A-53-dc" &&
+	    $product ne "2A-54" && $product ne "2A-54-dc" && $product ne "2A-55" && $product ne "2A-55-dc") {
+		return "";
+	}
+	local( $date_str, $granule_num, $site_str, $prod_version, $time_str, $prod_str);
+	# Base on the HDF filename if it exists; otherwise, base on the uf filename
+
+	if ($qc_uf_file ne "") {
+		local(@path) = split(/\//, $qc_uf_file);
+
+		($date_str, $granule_num, $site_str, $prod_version, $time_str) =
+			$path[$#path] =~ /^(\d+)\.(\d+)\.(\w+)\.(\d+)\.(\d+)\.${uf_file_ext}.*/;
+	}
+	elsif ($ghdf_file ne "") {
+		local(@path) = split(/\//, $ghdf_file);
+		($prod_str, $date_str, $granule_num, $site_str, $prod_version) =
+			$path[$#path] =~ /^(\w+)\.(\d+)\.(\d+)\.(\w+)\.(\d+)\.${ghdf_file_ext}.*/;
+        }
+        elsif ($gridded_refl_dc_shdf ne ""){
+                local(@path) = split(/\//, $gridded_refl_dc_shdf);
+
+# FIX split for dc products
+                ($prod_str, $date_str, $granule_num, $site_str, $prod_version) =
+			$path[$#path] =~ /^(\w+)\.(\d+)\.(\d+)\.(\w+)\.(\d+)\.${ghdf_file_ext}.*/;
+
+        }
+	local($version_num) = &get_prod_version_num($product, $in_or_out);
+	# Core_fname contains: 'yymmdd.vos#.site.ver#.'
+	if ($type eq $vos_type) {
+		$postfix = $shdf_file_ext;
+		# Set core_fname to: 'yymmdd.vos#.site.ver#.hhmm.'
+		$core_fname = "$date_str.$granule_num.$site_str.$version_num.$time_str.";
+	}		
+	else {
+		$postfix = $ghdf_file_ext;
+		# Set core_fname to: 'yymmdd.vos#.site.ver#.'
+		$core_fname = "$date_str.$granule_num.$site_str.$version_num.";
+	}
+
+	# Use only 4-char, i.e., 2A54, as prefix
+
+	($prefix = $product) =~ s/[-iwdc]//g;
+	$prefix  =~ s/v4$//g;
+
+	$fname = sprintf("%s.%s%s", $prefix, $core_fname, $postfix);
+
+	# Default: file is not compressed.
+	$fname = $top_dir.$fname; 
+	# .gz extension
+	$fname = "$fname.gz" if -e $fname.".gz";
+
+    # .Z extension
+	$fname = "$fname.Z" if -e $fname.".Z";
+	return $fname;
+} #get_filename
+
+
+sub level1_out_of_dkspace_handler {
+	# Just send the user a message by default.
+	# Can continue on processing level 2 products -- since
+	# level2 products have different dkspace requirements
+	# than level1 products.
+
+	# Notify user -- via e-mail
+
+		
+	local($msg) = "$this_prog: ERROR: Insufficient disk space to finish level I processing. \n\nYou may resume the production by running this program again using the following information: \n\tStart file:  See the message sent by all_tape_level_1\n\tProgram ran with arguments:  @save_prog_cmd\n\nThis script will continue processing level II products.";
+
+	print STDERR "$msg\n" if($verbose);
+	if ($yes_send_mail) {
+		local($cmd) = "echo \"$msg\"|mail -s \"Status for $this_prog for '$tape_id' on '$device'\" $ENV{'USER'}";
+		system($cmd);
+	}
+
+}
+
+sub doexit_handler {
+	# This routine is called when interrupt signal occurred.
+	# Note: This routine doesnot kill child processes directly since the 
+	# interrupt signal was not received by this process but by a child
+	# process when a child process 
+	# was running. Therefore, when a child process receives the interrupt 
+	# signal, it does cleanup and exit.
+	
+	local($signal) = @_;
+	local($exit_code) = $SEVERE_ERROR_CODE;
+
+	# Ignore signals--prevent from getting into an infinite loop.
+	do ignore_catched_signals();
+
+	# Restore STDERR and STDOUT.  This is required since both stderr and stdout
+	# might have been redirected by the calling program, all_tape_level_1n2.
+	do restore_tty();
+
+
+	$rc = 0;
+	$rc = 5 if ($signal eq 'KILL' || $signal eq 'STOP' || $signal eq 'INT' ||
+				 $signal == 9 || $signal == 2);
+
+
+	setpgrp();     # Set process group.
+	kill $signal, 0;    # Kill process group.
+	while (wait != -1) {;}  # Wait till all sub process(es) are killed.
+	$| = 1;
+	if ($first_time_exit_handler) {
+		$first_time_exit_handler = 0;
+		print STDERR "$this_prog: Got signal <$signal>. Stop execution. \n";
+
+		if ($curr_p ne "" && $curr_fname ne "") {	
+			system("send_status -e $curr_jobnum $tape_id $device $curr_p $curr_fname $stat_array[$rc]");
+
+			do set_products_status(*products_status, $stat_array[$rc], ($curr_p)) if ($product_list{$curr_p});
+		}
+		# send finish status message for finished products
+		do send_finish_stat_for_products(@process_order);
+		do clean_up();
+	}
+		
+
+	$exit_code = $INTER_CODE if $rc == 5;
+
+	if ($update_inventory_db) {
+		# Send info of each file for all products to GV inventory DB.
+		do send_product_info_to_inventory($tape_id, *active_prods_list, *options_list,
+								  $prod_processed_num, *products_status,
+								  "");
+	}
+	
+	do do_exit($exit_code);
+} #doexit_handler 
+
+

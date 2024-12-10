@@ -1,0 +1,69 @@
+#! /usr/bin/perl
+#-*-Perl-*-
+
+#  Convert GVS' product from HDF format (granuled or single VOS) to GIF or PGM
+#  file(s) for the specified directory.
+#
+#
+# By:
+#     Ngoc-Thuy T. Nguyen
+#     NASA/TRMM Office
+#     Science Systems and Applications, Inc.
+#     Thuy.Nguyen@gsfc.nasa.gov
+#
+#     Copyright 1996, 1997
+#
+######################################################################
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'gvs_production_common.pl';
+
+if ($#ARGV < 1) {
+USAGE:
+	print STDERR "Convert GV HDF Files from a Directory to Images\n";
+	print STDERR "Usage ($PROG_VERSION)\n";
+	print STDERR "    $this_prog {product} dir\n";
+	print STDERR "\t  where: \n",
+                 "\t   product = 1B-51 | 1C-51 | 2A-53 | 2A-54 | 3A-53 | 3A-54\n";
+	print STDERR "\t   dir contains HDF file(s)-- granuled or single VOS.\n";
+	print STDERR "\t   GIF files will be created for level I.\n";
+	print STDERR "\t   PGM files will be created for level II & III.\n";
+	exit(-1);
+}
+
+$type = shift;
+$dir = shift;
+
+%type_table = (
+	'1B-51', '1B51',
+	'1C-51', '1C51',
+	'2A-53', '2A53',
+	'2A-54', '2A54',
+	'3A-53', '3A53',
+	'3A-54', '3A54'
+);
+
+$prefix = $type_table{$type};
+do USAGE if $prefix eq "";
+
+opendir(DIR, $dir);
+@hdffiles = grep(/${prefix}.+HDF((\.gz)|(\.Z))?$/, readdir(DIR));
+
+while (@hdffiles) {
+	$file = shift @hdffiles;
+	system("hdf2img $type $dir/$file");
+}	
+
+exit(0);
+
+sub doexit_handler {
+	local($signal) = @_;
+    # Ignore signals
+	do ignore_catched_signals();	
+	local($rc) = -1;
+	$rc = -2 if ($signal eq 'INT' || $signal eq 'KILL' || $signal eq 'STOP');
+
+	exit($rc);
+}
+
+
+

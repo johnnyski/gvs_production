@@ -1,0 +1,850 @@
+<!DOCTYPE doctype PUBLIC "-//w3c//dtd html 4.0 transitional//en">
+<html>
+<head>
+                    
+  <meta http-equiv="Content-Type"
+ content="text/html; charset=iso-8859-1">
+                    
+  <meta name="GENERATOR"
+ content="Mozilla/4.7 [en] (X11; U; Linux 2.2.12 i686) [Netscape]">
+                    
+  <meta name="Keywords"
+ content="TRMM Office all_tape, GVS Production Automation, TRMM GV Data Processing, TRMM Ground Validation">
+  <title>TRMM Ground Validation Data Processing Software</title>
+</head>
+  <body background="gvs_production_bg.gif">
+     &nbsp;     
+<center>    
+<table border="2" cellpadding="0" width="100%">
+     <tbody>
+        <tr align="center" valign="CENTER">
+     <td align="center" valign="CENTER"><a name="Top"></a><a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/gvs_index.html"><img src="gvs_production_logo.gif"
+ border="0" height="100" width="256" align="left">
+          </a></td>
+      <td>                             
+      <h1> <font color="#000080"><a href="#all_tape_level_1">all_tape_level_1<br>
+     </a><a href="#all_tape_level_1n2">all_tape_level_1n2<br>
+     </a><a href="#level_3">level_3<br>
+     </a><a href="#all_tape_2A-52">all_tape_2A-52</a></font></h1>
+     </td>
+     </tr>
+                 
+  </tbody>    
+</table>
+    </center>
+          
+<center>    
+<table border="2" cellspacing="2" cellpadding="2" cols="6" width="100%"
+ bgcolor="#cccccc" nosave="">
+     <tbody>
+        <tr align="center" valign="CENTER" nosave="">
+     <td><b><font color="#000099">Current</font></b> <b><font
+ color="#000099">Version: 3.21</font></b></td>
+      <td><b><font color="#000099">Released Date: </font><font
+ color="#000000">1/07/2008</font></b></td>
+      <td><b><font color="#000099">Document</font></b> <b><font
+ color="#000099">updated: </font>8/21<font color="#000000">/2000</font></b></td>
+      <td><b><font color="#000000">See&nbsp;<a name="Readme"></a><a
+ href="../README">Readme</a></font></b></td>
+      <td><b><font color="#000000">&nbsp;See&nbsp;<a name="Changes"></a><a
+ href="../CHANGES">Changes</a></font></b></td>
+      <td align="center" valign="CENTER" nosave=""><a name="Download"></a><b><font
+ color="#000000"><a
+ href="ftp://trmm-fc.gsfc.nasa.gov/software/gvs_production-LATEST.tgz">Download</a> 
+  Software</font></b></td>
+     </tr>
+                 
+  </tbody>    
+</table>
+    </center>
+          
+<hr width="100%">     
+<h3> <b><font color="#000080"><font size="+3">Introduction</font></font></b></h3>
+     This package developed by the <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/index.html">TRMM Office</a> is
+  in <a href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvbox/gvbox.html">GVBOX</a>.&nbsp; It contains the product
+  generation programs that automate the execution of level 1, 2 and/or 3
+(excluding   <i>2A-56</i>, and <i>2A-57</i>) of the Ground Validation Software
+(<b><a href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/gvs_index.html">GVS</a></b>) production system.
+The programs can process any data set recognized by <i>level_1</i> (however,
+<i>2A-53-w</i> can process data from Melbourne and Darwin only). Raw Darwin
+data set is assumed to contain tarred file(s) of compresssed file(s). Other
+raw data sets are assumed to contain compress/non-compessed file(s). The
+programs to schedule production for level 1, level 2, and level 3 are <font
+ color="#000080"><a href="#all_tape_level_1">all_tape_level_1</a></font><font
+ color="#000000">,</font><font color="#000080"><a
+ href="#all_tape_level_1n2">all_tape_level_1n2</a></font><font
+ color="#000000">, </font><font color="#000080"><a
+ href="#all_tape_2A-52">all_tape_2A-52</a></font><font color="#000000">, and
+</font><font color="#000080"><a href="#level_3">level_3</a></font><font
+ color="#000000">. The programs are named in a self explainatory manner.</font>&nbsp;
+  There is a graphical user interface program for scheduling the execution
+ of level 1, 2, and/or 3 programs; click on <a
+ href="ftp://trmm.gsfc.nasa.gov/pub/software/gvs_gui-LATEST.tgz">gvs_gui</a> 
+  to download that software package.     
+<h3>      
+<hr width="100%"><a name="Synopsis"></a><font color="#000080"><font
+ size="+3">Synopsis</font></font></h3>
+          
+<ul>
+                 
+  <pre><b><font color="#b22222">&nbsp;<a name="all_tape_level_1n2"></a><a
+ href="#des_all_tape_level_1n2">all_tape_level_1n2</a> <i><tt>device</tt></i> <i><tt>tape_id</tt></i> [options]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt><a
+ href="#product">product</a> product_options_file&nbsp;<br></tt></i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [<i><tt>product product_options_file</tt></i>]...</font></b></pre>
+                  
+  <pre><b>where,</b></pre>
+                  
+  <pre><b><font color="#b22222">[options]</font></b><font
+ color="#000000">:=</font>&nbsp; <b><font color="#b22222">[-g] [-help][-w <i><tt>working_dir</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-not_report_monitorps]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-max_num_raw_files_per_hour <i><tt>number</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-start_raw_file&nbsp; {<tt><i>filename </i>|<i>file_sequential_num</i>}</tt>]&nbsp;&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-start_qc_file&nbsp;&nbsp;&nbsp; <i><tt>filename</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-start_csmap_file <i><tt>filename</tt></i>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-start_gridded_refl_file  <i><tt>filename</tt></i>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-last_raw_file&nbsp;&nbsp; {<i>filename </i>|<i>file_sequential_num</i>}]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-last_qc_file&nbsp;&nbsp;&nbsp;&nbsp; <i>filename</i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-last_csmap_file&nbsp; <i>filename</i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-last_gridded_refl_file &nbsp; <i>filename</i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-raw_dir&nbsp;&nbsp;&nbsp; <i><tt>input_dir</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-qc_dir&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>input_dir </tt></i>|<i><tt>&nbsp; </tt></i>-qc_dirs_file&nbsp;&nbsp;&nbsp; <i><tt>filename</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-csmap_dir&nbsp; <i><tt>input_dir </tt></i>|<i><tt>&nbsp; -</tt></i>csmap_dirs_file <i><tt>filename</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-gridded_refl_dir &nbsp; <i><tt>input_dir </tt></i>|<i><tt>&nbsp;-</tt></i>gridded_refl_dirs_file  <i><tt>filename</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-i&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>levelII_top_input_dir</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>top_output_dir</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-versions_file <i><tt>filename</tt></i>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-remove_old_products]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-do_not_send_mail]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-not_compress_level1]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-alternative_top_output_dirs_file&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>filename</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-alternative_working_dirs_file&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>filename</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-tape_has_no_header_file | -header_file_number <i>number</i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-first_data_file_number <i>number</i>]<br><br><br></font>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ size="+2">&nbsp;&nbsp;&nbsp;</font><font size="+1">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <br></font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b> <font
+ color="#b22222">device</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <i><tt>disk</tt></i>, <i>CD</i>, <i>/dev/8mm1</i>, <i>/dev/8mm2</i>, etc.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">tape_id</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = The physical label. Ex. <i>kmlb001</i>.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-g&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Level II option, only.&nbsp; Process hourly granules.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; The default is process single VOSes.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Processing single VOSes is more efficient because<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; granules don't have to be broken apart.&nbsp;&nbsp;&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-help</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Will show this list.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-w</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify working directory. Default = `pwd`.</b></b></pre>
+                  
+  <pre><b><b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-not_report_monitorps</font>: Do not send status messages to monitorps.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -max_num_raw_files_per_hour</font> : Specify the maximum number of VOS input files per hour&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default: 20.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-start_raw_file</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify raw radar file's name or sequential&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; number to start processing level 1 at.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Type <i><a
+ href="#all_tape_level_1_Note">all_tape_level_1</a></i> to see more detail in the Note section.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-start_qc_file</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify QC filename to start processing level 2 at.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-start_csmapfile</font>&nbsp;&nbsp;&nbsp;&nbsp; : Specify csmap filename to start processing level 2 at.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-start_gridded_refl_file</font>: Specify gridded reflectivity filename to start processing level 2 at.<br>                                &nbsp;(Use only for <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-dc.html">2A-53-dc</a> dual CAPPI product.)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-last_raw_file</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify the last raw file's name or sequential<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; number to be processed.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Type <i><a
+ href="#all_tape_level_1_Note">all_tape_level_1</a></i> to see more detail in the Note section.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-last_qc_file</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify the last QC filename (granuled HDF) to be processed by level 2.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-last_csmap_file</font>&nbsp;&nbsp;&nbsp;&nbsp; : Specify the last csmap filename (granuled HDF) to be processed by level 2.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-last_gridded_refl_file</font>: Specify the last gridded reflectivity filename (granuled HDF) to be <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   processed by level 2 (<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-dc.html">2A-53-dc</a> dual CAPPI product only).<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-raw_dir</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify directory for raw or UF data. Default = `pwd`.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify this if data files are from disk.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-qc_dir</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify qc data directory. This contains </b></b><b><b>1C-51 products (granuled</b></b><b><b> HDF</b></b><b><b><br>                                 </b></b><b><b>files)</b></b><b><b> used in level 2 processing.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default = <i>$top_input_dir/gvs_level_1_&lt;tapeid&gt;</i>.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-qc_dirs_file</font><font color="#000000">&nbsp;<font
+ size="+1">&nbsp;</font>&nbsp;     : Specify filename that contains a list of dirs. of&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; qc data.&nbsp; Default: "".&nbsp; Specify this option if 1C-51<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; products (granuled HDF files) exist in several dirs.&nbsp;<br><br></font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-csmap_dir</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify csmap data directory.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default = <i>$top_input_dir/gvs_2A-54_&lt;tapeid&gt;</i>.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specifythis if 2A-54 products (granuled HDF files) exist.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222"><i><tt>-</tt></i>csmap_dirs_file&nbsp;</font><font
+ color="#000000">&nbsp;&nbsp;&nbsp; : Specify filename that contains a list of dirs. of csmap<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; data.&nbsp; Default: "".<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify this option if 2A-54 products (granuled HDF files)&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; exist in several dirs.<br><br></font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-gridded_refl_dir</font>&nbsp;&nbsp;&nbsp; : Specify gridded reflectivity data directory.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default = <i>$top_input_dir/gvs_2A-55_&lt;tapeid&gt;</i>.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify this if 2A-55 products (granuled HDF files) exist.  <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Use only for <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-dc.html">2A-53-dc</a> dual CAPPI product.)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222"><i><tt>-</tt></i>gridded_refl_dirs_file</font><font
+ color="#000000">: Specify filename that contains a list of dirs. <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; of gridded reflectivity data.&nbsp; Default: "".<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify this option if 2A-55 products (granuled HDF files)&nbsp;exist <br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; in several dirs.  (Use only for <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-dc.html">2A-53-dc</a> dual CAPPI product.)<br><br></font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-i</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify top input directory where&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; gvs_&lt;product&gt;_&lt;tapeid&gt;s are under. Default = `pwd`.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-o</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify top output directory where&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; gvs_&lt;product&gt;_&lt;tapeid&gt;s will be created under.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default = `pwd`.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-versions_file</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify filename that contains TSDIS products'&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; version numbers. Default = $<i><tt>GVS_DATA_PATH</tt></i>/products_version_numbers.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; See the default file for format when creating this file.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-remove_old_products </font>: Yes, remove the existing directori(es)&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &lt;$<i>top_output_dir</i>/gvs_&lt;product&gt;_&lt;tapeid&gt;. Default:&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; This program will exit.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-do_not_send_mail&nbsp;</font>&nbsp;&nbsp; : Do not send a mail message to the production submitter.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default: the program will send a mail message in the following cases:&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (1) When the file system of the working directory or of the&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; top output directory runs out of disk space and/or<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (2) When the program exits.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-not_compress_level1</font> : Do not compress level1 products.&nbsp; Use this option when the&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; the raw files are not listed in the increasing order of data-time.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-alternative_working_dirs_file</font> : Specify filename that contains a list of&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; alternative working dirs (full pathnames) to be<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; used when out of disk space occurs.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-alternative_top_working_dirs_file </font>: Specify filename that contains a list of alternative<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; top output dirs. (full pathnames) to be used when<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; out of disk space occurs.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#993300">-tape_has_no_header_file</font>:<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify this flag if the first file is data file. This applies to non-berrimah data.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#993300">-header_file_number</font>:<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify file number of the tape header file. Default: 0.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#993300">-first_data_file_number</font>:<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify file number of the first raw data file. Default: 1.<br><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a
+ name="product"></a><font color="#b22222">product</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">level_1</a>|<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-w.html">2A-53-w</a>|<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-d.html">2A-53-d</a>|<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-c.html">2A-53-c</a>|<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-v4.html">2A-53-v4</a>|<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-dc.html">2A-53-dc</a>|<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-54.html">2A-54</a>|<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-54-dc.html">2A-54-dc</a>|<a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-55.html">2A-55<br></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">product_options_file</font> = Name of file containing command line options for specified product.<br><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Note: `pwd` = full pathname of the current directory.<br><br><br><br><br></b></b><hr
+ width="100%">
+
+<b><b>&nbsp;<a name="all_tape_level_1"></a><font color="#b22222"><a
+ href="#des_all_tape_level_1">all_tape_level_1</a> <i>device</i> <i>tape_id</i>&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-n] [-not_compress] [-leave_raw_data_on_disk]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-i&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>input_dir</tt></i>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-o&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>top_output_dir</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-w&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>working_dir</tt></i>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-max_num_raw_files_per_hour&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>number</tt></i>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-not_report_monitorps]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-start_infile&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {<tt><i>filename </i>|<i>file_sequential_num</i>}</tt>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-last_infile&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; {<tt><i>filename </i>|<i>file_sequential_num</i>}</tt>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-alternative_top_output_dirs_file&nbsp;&nbsp; <i><tt>filename</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-alternative_working_dirs_file&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>filename</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-t&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt>top_tmp_dir</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-tape_has_no_header_file | -header_file_number <i>number</i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-first_data_file_number <i>number</i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i>program</i> [options]</font></b></b></pre>
+         
+</ul>
+          
+<pre><b><b><font size="+1">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font> <i>where:<br><br></i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">device</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <i>disk</i>, <i>CD</i>, <i>/dev/8mm1</i>, <i>/dev/8mm2</i>, etc...<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">tape_id</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = The physical label. Ex. <i>kmlb001</i>.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-n&nbsp;</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Do not send e-mail to the user when the system ran out of disk space.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-not_compress</font>: Do not compress the products. Use this option when the&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; input files are not listed in the order of data-time.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-leave_raw_data_on_disk</font>: Leave raw data on disk when exits.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; This only applies to data read from tape.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-i</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify the directory for input data. Default = `pwd`<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-o</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify the top output directory. Default: `pwd`.&nbsp; This will be pre-pended<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; to any of the relative directories specified in the program's options.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-w</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify the working dir. Default = `pwd`.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-max_num_raw_files_per_hour</font> : Specify the maximum number of VOS input files per hour.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default: 20.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -not_report_monitorps</font>: Do not send status messages to monitorps.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-start_infile</font>: Specify the file's name or sequential number (for non-UF only) to start processing at.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-last_infile</font> : Specify the last file's name or sequential number (for non-UF only) to be processed.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-alternative_working_dirs_file</font> : Specify filename that contains a list of&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; alternative working dirs (full pathnames) to be<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; used when out of disk space occurs.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-alternative_top_working_dirs_file </font>: Specify filename that contains a list of alternative<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; top output dirs. (full pathnames) to be used when<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; out of disk space occurs.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-t</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify the directory name for temporary files.<br><font
+ color="#993300">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -tape_has_no_header_file</font>:<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify this flag if the first file is data file. This applies to non-berrimah data.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#993300">-header_file_number</font>:<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify file number of the tape header file. Default: 0.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#993300">-first_data_file_number</font>:<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Specify file number of the first raw data file. Default: 1.<br><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">program</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <i><a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">level_1<br></a></i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">options</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = Options to program.</b></b></pre>
+          
+<pre><b><b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Note: `pwd` = full pathname of the current directory.</b>
+
+
+
+
+</b><hr width="100%"></pre>
+          
+<pre><b><b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a name="level_3"></a><font
+ color="#b22222"><a href="#des_level_3">level_3</a> <i>tape_id</i> [-i <i>top_<tt>input_dir</tt></i>] [-o <i><tt>top_output_dir</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-w <i><tt>working_dir</tt></i>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-remove_old_products]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-do_not_send_mail]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-versions_file <i><tt>filename</tt></i>]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-not_report_monitorps]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt><a
+ href="#product_level3">product</a> product_options_file&nbsp;<br></tt></i>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [<i><tt>product product_options_file</tt></i>]...</font></b></b></pre>
+          
+<pre><b><b><font color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -i</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify level 2 top input directory where&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; gvs_&lt;level_2_product&gt;_&lt;tapeid&gt;s is under. Default = `pwd`.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-o</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify level 3 top output directory where&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; gvs_&lt;product&gt;_&lt;tapeid&gt;s will be created under.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default = `pwd`.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -w&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; </font>: Specify working directory. Default = `pwd`.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -remove_old_products </font>: Yes, remove the existing directori(es)&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &lt;$<i>top_output_dir</i>/gvs_&lt;product&gt;_&lt;tapeid&gt;. Default:&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; This program will exit.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-versions_file</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify filename that contains TSDIS products'&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; version numbers. Default = $<i><tt>GVS_DATA_PATH</tt></i>/products_version_numbers.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; See the default file for format when creating this file.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-do_not_send_mail&nbsp;</font>&nbsp;&nbsp; : Do not send a mail message to the production submitter.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default: the program will send a mail message&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; when the program exits.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -not_report_monitorps</font>: Do not send status messages to monitorps.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -wsr88d</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Use WSR-88D time gap parameters in rain rate accumulations. (See<br>                                 </b></b><b><a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/3A-53.html">3A-53</a></b><b> or </b><b><a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/3A-54.html">3A-54</a></b><b> for details on time gap parameters.)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default: time gap parameters are determined based on radar type.<br><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a
+ name="product_level3"></a><font color="#b22222">product</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/3A-53.html">3A-53</a> | <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/3A-54.html">3A-54</a> | <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/3A-55.html">3A-55<br></a><font color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; product_options_file</font> = Name of file containing command line options for specified product.<br><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Note: `pwd` = full pathname of the current directory.</b></pre>
+          
+<pre><hr width="100%"></pre>
+          
+<pre><b><b><font color="#b22222"><font size="+1">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a
+ name="all_tape_2A-52"></a></font><a href="#des_all_tape_2A-52">all_tape_2A-52</a> <i>tape_id</i> [-i <i>top_<tt>input_dir</tt></i>] [-o <i><tt>top_output_dir</tt></i>]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-remove_old_products]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-do_not_send_mail]&nbsp;&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-versions_file <i><tt>filename</tt></i>]&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-not_report_monitorps]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <i><tt><a
+ href="#program_2A52">program</a> program_options_file</tt></i></font></b></b></pre>
+          
+<pre><b><b><font color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -i</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify top input directory where&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; gvs_&lt;2A-53_product&gt;_&lt;tapeid&gt;s is under. Default = `pwd`.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-o</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify top output directory where&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; gvs_2A-52i_&lt;tapeid&gt;s will be created under.&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default = `pwd`.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -remove_old_products </font>: Yes, remove the existing directori(es)&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &lt;$<i>top_output_dir</i>/gvs_2A-52i_&lt;tapeid&gt;. Default:&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; This program will exit.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -do_not_send_mail&nbsp;</font>&nbsp;&nbsp; : Do not send a mail message to the production submitter.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Default: the program will send a mail message&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; when the program exits.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <font
+ color="#b22222">-versions_file</font>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Specify filename that contains TSDIS products'&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; version numbers. Default = $<i><tt>GVS_DATA_PATH</tt></i>/products_version_numbers.<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; See the default file for format when creating this file.<br><font
+ color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -not_report_monitorps</font>: Do not send status messages to monitorps.<br>&nbsp;<a
+ name="program_2A52"></a>program&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; = <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-52i.html">2A-52i<br></a><font color="#b22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; program_options_file</font> = <i>~/test/2A-52.opts</i>, option,...<br><br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Note: `pwd` = full pathname of the current directory.</b></b></pre>
+          
+<hr width="100%">     
+<h3> <b><a name="Description"></a><b><font color="#000080"><font
+ size="+3">Description</font></font></b></b></h3>
+          
+<h4> <b><a name="des_all_tape_level_1n2"></a><b><font color="#2e8b57">all_tape_level_1n2:</font></b></b></h4>
+     <b><b><font color="#b22222"><a href="#all_tape_level_1n2">all_tape_level_1n2</a></font> 
+  generates level I and/or level II products for an entire 8mm input tape. 
+ Additionally, this program can process data from disk or CD. For non-Darwin 
+ data processing, the disk and CD organizations do not differ. For Darwin, 
+ the CD organization differs from when it is staged from 8mm tapes to disk. 
+ The difference is minor because there is not enough space on a CD to hold 
+ an entire Darwin tape, so, several CD's contain the data from one Darwin 
+8mm tape.</b> </b>    
+<p><b><b><font color="#b22222"><a href="#all_tape_level_1n2">all_tape_level_1n2</a></font> 
+  calls <i><font color="#000000">all_tape_level_1</font></i> to generate level_1
+ products. Output files from level I are kept on disk and used as input to
+ the level II programs. Any combination of products for level I and II may
+ be specified on the command line. A directory, gvs_&lt;product&gt;_&lt;tapeid&gt;, 
+  will be created for each product. The options file, specific to each product, 
+  will be copied to this directory to keep the products seperate from the 
+execution of the other programs that may be running.</b> </b></p>
+       
+<p><b><a name="all_tape_level_1n2_Note"></a><b><i>Note</i>:</b> </b></p>
+       
+<ol>
+     <li> <b><b>Level I products must reside on disk when running only level
+  II programs.</b></b></li>
+      <li> <b><b>Can run level 1 from tape, CD, or disk. When data is from
+ CD  or disk, type the command <i><a href="#all_tape_level_1_Note">all_tape_level_1</a>,</i> 
+  and examine the NOTES section w.r.t. file naming conventions.</b></b></li>
+      <li> <b><b>Can run any number of products.</b></b></li>
+      <li> <b><b>For level II, by default, level II products are processed
+ one  VOS at a time; the granule input products are first degranulized. The
+ algorithm  programs take a single VOS product as input; thus, the script
+will send status messages for the singlevos processing. In contrast, specify
+'<i><tt>-g</tt></i>'  to process level II using hourly granules as inputs
+to the algorithm programs;  thus, the script will send a status message of
+processing for each granule  file.</b></b></li>
+      <li> <b><b>Options are available to specify range of input files to 
+be  processed.</b></b></li>
+      <li> <b><b>Options, <i><tt>-b, and -c</tt></i>' should be omitted from
+  the option file for level_1; note that the directory specified for option,
+  -u, will be modified by this script.</b></b></li>
+      <li> <b><b><font color="#b22222"><a href="#all_tape_level_1n2">all_tape_level_1n2</a></font> 
+  uses the version numbers of TSDIS products from a file to construct products' 
+  filenames (File naming convention is specified by TSDIS). See option '-versions_file 
+  filename' for detail.</b></b></li>
+      <li> <b><b><font color="#b22222"><a href="#all_tape_level_1n2">all_tape_level_1n2</a></font> 
+  estimates the required disk space for running level 1 program or all of 
+level 2 programs with the next input file. If there is no specified alternative 
+  directory, tt will stop and send the user a mail message indicating which 
+  file the program stopped at. This information can be used to resume the 
+production.</b></b></li>
+         
+</ol>
+     <b><b><i>Special Requirements</i>:</b> </b>    
+<ul>
+     <li> <b><b>The shell environment variables, <i>GVS_DATA_PATH</i> and 
+    <i>TSDISTK</i>,       <i>must</i> be set.</b></b></li>
+      <li> <b><b><i>2A-53-w</i> - Read gvs/src/2A-53/witek/README, section EXECUTION
+NOTES.</b></b></li>
+      <li> <b><b><i>2A-53-d</i> - Read gvs/src/2A-53/danny/README, section EXECUTION
+NOTES.</b></b></li>
+      <li> <b><b><i>2A-53-v4</i> - Read gvs/src/2A-53/ver4/README, section EXECUTION NOTES.</b></b></li>
+      <li> <b><b><i>2A-53-dc</i> - Read gvs/src/2A-53/dual-cappi/README, section EXECUTION
+  NOTES.</b></b></li>
+      <li> <b><b><i>2A-54</i> - Read gvs/src/2A-54/README, section EXECUTION NOTES.</b></b></li>
+      <li> <b><b><i>2A-55</i> - Read gvs/src/2A-55/README, section EXECUTION NOTES.</b></b></li>
+         
+</ul>
+          
+<h4> <b><a name="des_all_tape_level_1"></a><b><font color="#2e8b57">all_tape_level_1:</font></b></b></h4>
+     <b><b><font color="#b22222"><a href="#all_tape_level_1">all_tape_level_1</a></font> 
+  generates level I products for an entire 8mm tape. It can process data sets
+ recognized by <i>level_1 </i>(This includes UF data set also). Darwin data
+ set is assumed to contain tarred file(s) of compresssed file(s). Other data
+ sets are assumed to contain compress/non-compessed file(s) and will be treated
+ like Melbourne data set in production flow processing. The first file of
+tape contains site information; the second file, to the end of the tape,
+contains data. The first file is used for Melbourne data only. It is used
+as the 'first_filename_or_callid' parameter to <i>level_1</i> for processing
+ files 2 through the end of the tape. When processing Kwajalein or Darwin
+data, the first file is ignored. Typically the first file is a tape header
+file.</b> </b>    
+<p><b><b>For data from tape, <font color="#b22222"><a
+ href="#all_tape_level_1">all_tape_level_1</a></font> stages the first file
+  to disk and keeps it on disk until all remaining files on the tape are
+processed.   In addition, while processing a particular input file the next
+input file   from tape is staged, improving tape IO throughput. Once processing
+is completed,   the input file is removed. After the last input tape file
+is processed, the  first file that was staged is removed.</b> </b></p>
+       
+<p><b><a name="all_tape_level_1_Note"></a><b><i>Note</i>:</b> </b></p>
+       
+<ol>
+     <li> <b><b>This script can read data either from disk, CD, or tape.
+When   reading data from disk, this program assumes data files are named
+    <i><tt>$tape_id.#[.gz|.Z]</tt></i>   or <i><tt>*.uf[.gz|.Z],</tt></i>
+where '#' is a sequential number starting   from 0. Sequential number may
+either be a 3-, 4-, 5-digit, or non-leading-zero   number. Darwin files are
+compressed tar archives and require one additional   step to unpack the data.
+When reading data from CD, the input directory for non-Darwin raw data should
+contain files named <i><tt>$tape_id.#[.gz|.Z]</tt></i>,   where '#' is a
+sequential number starting from 0; the input directory for   Darwin data
+should contain a tape header file named <i><tt>$tape_id.{0|000|0000|00000} 
+      </tt></i>and data files named <i><tt>*.vol[.gz|.Z]</tt></i>. With Berrimah
+  data set either from tape or from disk, it contains no header file (The
+first  file is data file) and an empty file between two data files. However,
+with  Berrimah data set from CD, the header file should contain <i>Berrimah</i>.
+  UF files of any site should be named <i><tt>*.uf[.gz|.Z]</tt></i>.</b></b></li>
+      <li> <b><b>This script can process Melbourne, Kwajelein, Darwin, plus 
+ other data sets recognized by <i>level_1</i>. For production flow processing, 
+ this  script treats the files tree of other data sets like the one for Melbourne 
+  data set. For product processing, the actual program 'level_1' will determine 
+  the data's site information.</b></b></li>
+      <li> <b><b>It checks to see if level I product file is a complete granule
+  HDF file then it compresses that file. This checking is required since
+    <i>level_1</i>   appends the result of the existing HDF file that belongs
+to the same granule.</b></b></li>
+      <li> <b><b><font color="#b22222"><a href="#all_tape_level_1">all_tape_level_1</a></font> 
+  estimates the required disk space for running the next file. If there is 
+ no specified alternative directory, tt will stop and send the user a mail 
+ message indicating which file the program stopped at. This information can 
+ be used to resume the production.</b></b></li>
+      <li> <b><b><font color="#b22222"><a href="#all_tape_level_1">all_tape_level_1</a></font> 
+  is able to process range of input files only.</b></b></li>
+      <li> <b><b>This script will add options '<i><tt>-f &lt;first_filename&gt;</tt></i>' 
+  appropriately depending on the site information in the first file when calling
+ level_1; therefore, these options may be omitted from the option list. However,
+ in some cases, the first_file does not contain the required information,
+the user can specify '<i>-f &lt;callID&gt;</i>'.</b></b></li>
+      <li> <b><b>Use absolute pathname when specifying '<i><tt>-b</tt></i>',
+  '<i><tt>-c</tt></i>', '<i><tt>-g</tt></i>', and '<i><tt>-u</tt></i>' options;
+  otherwise, <i><tt>$top_output_dir</tt></i> will be prepended to the pathnames.</b></b></li>
+      <li> <b><b>To specify the start or the last file, use the following 
+convention:</b></b></li>
+                  
+  <ol>
+     <li> <b><b>For UF data set for any site, use the file's name.</b></b></li>
+      <li> <b><b>For non-Darwin data set, use the file's name or sequential 
+ number.</b></b></li>
+      <li> <b><b>For Darwin data set, use the actual VOS filename for data
+ on  CD or use file's sequential number, <i>$tape_id</i>.<i>$seq#</i>, or
+      <i>$tape_id</i>.<i>$seq#</i>[.gz|.Z]_tmp/<i>$vos_fname</i>  for data
+ not on CD.</b></b></li>
+      <li> <b><b>Note: <i>Seq#</i> does not include leading 0s if data is 
+from  tape.</b></b></li>
+                 
+  </ol>
+         
+</ol>
+     <b><a name="des_level_3"></a><b><font color="#2e8b57">level_3:</font></b> 
+  </b>    
+<p><b><b><font color="#b22222"><a href="#level_3">level_3</a></font><font
+ color="#000000"> automates the processing of GV level 3 products for a whole
+  tape. This program reads input from disk.</font></b> </b></p>
+       
+<p><b><a name="des_all_tape_2A-52"></a><b><font color="#2e8b57">all_tape_2A-52:</font></b> 
+  </b></p>
+       
+<p><b><b><font color="#b22222"><a href="#all_tape_2A-52">all_tape_2A-52</a></font> 
+  automates the processing of GV's 2A-52i product for a whole tape. This program
+ reads input from disk. There is a program that processes a whole month worth
+ of data. It is called <a href="monthly_2A-52.html">monthly_2A-52</a>.</b> 
+  </b></p>
+       
+<p><b><b><i>Special Requirements for All Programs</i>:</b> </b></p>
+       
+<p><b><b>The shell environment variables, <i>GVS_DATA_PATH</i> and <i>TSDISTK</i>, 
+  <i><tt>must</tt></i> be set.</b> </b></p>
+       
+<h3>      
+<hr width="100%"></h3>
+          
+<h3> <b><a name="Examples"></a><b><font color="#000080"><font size="+3">Examples</font></font></b></b></h3>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 1:</font></font></b></b></h4>
+     <b><b>If I have either Darwin, Kwajalein, or Melbourne data on an 8mm
+ tape,  how do I generate all of level I and II products?</b> </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 /dev/8mm1 N0001 level_1 level1.opts&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-53-w 2A-53-w.opts 2A-53-c 2A-53-c.opts&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-53-d 2A-53-d.opts 2A-53-v4 2A-53-v4.opts 2A-54 2A-54.opts 2A-55 2A-55.opts</i></b></b></pre>
+     <b><b><i>where</i>:</b> <br>
+      <b>&lt;product&gt;.opts is a file containing product's options, listed 
+ in one line.</b></b>    
+</ul>
+     <b><b>The above command will generate the following products: <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1B-51 </a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1C-51 </a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-w.html">2A-53-w</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-c.html">2A-53-c</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-d.html">2A-53-d</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-v4.html">2A-53-v4</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-v4.html">2</a><a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-54.html">A-54</a>, and <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-55.html">2A-55</a> for tape named, '<i><tt>N0001</tt></i>',
+  residing on device '<i><tt>/dev/8mm1</tt></i>'.</b> </b>    
+<p><b><b><font color="#b22222">all_tape_level_1n2</font> will prepend '<i><tt>-t 
+  L</tt></i>' to the option list for <i>2A-53-w</i> if the data set is Darwin. 
+  It will append options, <i><tt>-c, -f </tt></i>(Melbourne only)<i><tt>, 
+and -b, </tt></i>to the option list for <i>level_1</i>. See the html documentation 
+  for each product for specific product options. Normally, though, you only 
+  need to specify '<i><tt>-v</tt></i>' as the only option to the program to
+ get extensive diagnostic reporting during execution. For example, each <i><tt>*.opt</tt></i>
+  file, above ,contains the string '<i><tt>-v'</tt></i> so that all defaults
+  are used. Note, though, the <i><tt>*.opt</tt></i> file can be empty; it
+must exist, but it can be empty.</b> </b></p>
+       
+<p><b><b>This script will create the following directories and will put the 
+  appropriate outputs there:</b> </b></p>
+       
+<ul>
+     <li> <b><b><i><tt>./gvs_level_1_N0001/1C-51,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_level_1_N0001/1B-51,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_level_1_N0001/UF (if -u was specified in the
+ option  file for level_1),</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-d_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-w_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-c_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-v4_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-54_N0001,</tt></i></b></b></li>
+      <li> <b><b><tt>.<i>/gvs_2A-55_N0001</i></tt>.</b></b></li>
+         
+</ul>
+     <b><b>The processing follows these steps:</b> </b>    
+<ol>
+     <li> <b><b>Stage first file from tape to disk This is the tape header
+ file.  This file is used for Melbourne processing solely to determine the
+ radar site id.</b></b></li>
+      <li> <b><b>Stage next file from tape to disk</b></b></li>
+      <li> <b><b>Run level_1, meanwhile staging the next file from tape to
+ disk.</b></b></li>
+      <li> <b><b>Go to the previous step for the next file on disk</b></b></li>
+      <li> <b><b>Upon completion of level_1 processing for the whole tape,
+ run  level 2 on all the level_1 products. Processing of level 2 is at single
+ VOS  level since '<i><tt>-g</tt></i>' is not specified on the command line.</b></b></li>
+      <li> <b><b>The products are now on disk -- you can archive them to
+tape.</b></b></li>
+         
+</ol>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 2:</font></font></b></b></h4>
+     <b><b>I have a Melbourne CD that holds three Melbourne tapes. The tapes
+  on the CD are: <i><tt>kmlb001</tt></i>, <i><tt>kmlb002</tt></i>, and <i><tt>kmlb003</tt></i>. 
+  How do I generate all of level I products for the tape named, <i><tt>kmlb001</tt></i>?</b> 
+  </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 CD kmlb001 -raw_dir /cdrom/kmlb001 level_1 level1.opt</i></b></b></pre>
+     <b><b><i>where:</i></b> <br>
+      <b>level1.opt for <a href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">level_1    </a>must
+ NOT include '<i><tt>-B -C</tt></i>'.</b></b>    
+</ul>
+     <b><b>The above command will generate 1C-51 and 1B-51 for the Melbourne
+  tape, <i><tt>kmlb001</tt></i>, that resides on the CD. The directory of
+the  data is '<i><tt>/cdrom/kmlb001</tt></i>'. Note: '<i><tt>/cdrom</tt></i>'
+ is a mounted point of a CD device.</b> </b>    
+<p><b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will create 
+  a directory, '<i><tt>./gvs_level_1_kmlb001</tt></i>' and place the results 
+  there.</b> </b></p>
+       
+<h4> <b><b><font color="#008080"><font size="+1">Example 3:</font></font></b></b></h4>
+     <b><b>How do I generate all of level I products for a Darwin CD?</b> 
+</b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 CD darw001-1 -raw_dir /cdrom/ level_1 level1.opt</i></b></b></pre>
+     <b><b><i>where:</i></b> <br>
+      <b>level1.opt for <a href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">level_1    </a>must
+ NOT include '<i><tt>-B -C'</tt></i>.</b></b>    
+</ul>
+     <b><b>The above command will generate 1C-51 and 1B-51 for the entire 
+CD  having the first filename, <i><tt>darw001-1</tt></i>. The directory of 
+the  data is '<i><tt>/cdrom/</tt></i>'. Note: '<i><tt>/cdrom</tt></i>' is 
+a mounted   point of a CD device.</b> </b>    
+<p><b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will create 
+  a directory, '<i><tt>./gvs_level_1_darw001-1</tt></i>' and place the results 
+  there.</b> </b></p>
+       
+<h4> <b><b><font color="#008080"><font size="+1">Example 4:</font></font></b></b></h4>
+     <b><b>I have either Darwin or Melbourne data on disk located in the
+current   directory, which had been staged to disk from an 8mm tape named,
+<i><tt>W93-01</tt></i>.   How do I generate 1C-51 products?</b> </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 disk W93-01 level_1 level1.opt</i></b></b></pre>
+     <b><b><i>where:</i></b> <br>
+      <b>level1.opt for <a href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">level_1</a> 
+ must include '<i><tt>-B</tt></i>' .</b></b>    
+</ul>
+     <b><b>The above command will generate only 1C-51, no 1B-51, for tape,
+ <i><tt>W93-01,</tt></i>  residing on disk located in the current working
+directory.</b> </b>    
+<p><b><b><i>Note</i>:</b> </b></p>
+       
+<ul>
+     <li> <b><b>The input file names are <i><tt>W93-01.000</tt></i> through 
+     <i><tt>W93-01.999.</tt></i>  This is a bit extreme, typically the max 
+ is <i><tt>&lt;tapeid&gt;.250</tt></i>.</b></b></li>
+      <li> <b><b>All input files can either be gzip-ed or ungzip-ed for Melbourne
+  data. For Darwin data, the files must be a compressed tar archive.The first
+  file, of both data types, must be uncompressed.</b></b></li>
+      <li> <b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will
+  create a directory, '<i><tt>gvs_level_1_W93-01</tt></i>' and place 1C-51
+ products there.</b></b></li>
+         
+</ul>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 5:</font></font></b></b></h4>
+     <b><b>I have either Darwin or Melbourne data on disk. It had been staged
+  to disk in directory, '<i><tt>/gvs/data/</tt></i>', from an 8mm tape named, 
+  <i><tt>W93-01</tt></i>. How do I generate 1C-51 and 1B-51 products?</b> 
+</b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 disk W93-01 -raw_dir /gvs/data/&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; -o /gvs/productions/ level_1 level1.opt</i></b></b></pre>
+     <b><b><i>where:</i></b> <br>
+      <b>level1.opt fo<i>r</i> <a href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">level_1
+   </a>must NOT include  '<i><tt>-B -C -b 1B_dir -c 1C_dir</tt></i>'.</b></b>
+   
+</ul>
+     <b><b>The above command will generate 1B-51 and 1C-51 products for tape,
+  <i><tt>W93-01</tt></i>, residing on disk located in '<i><tt>/gvs/data/</tt></i>'.
+  1B-51 and 1C-51 products will be placed in '<i><tt>/gvs/productions/gvs_level_1_W93-01/1B-51</tt></i>' 
+  and '<i><tt>/gvs/productions/gvs_level_1_W93-01/1C-51</tt></i>' , respectively.</b> 
+  </b>    
+<p><b><b><i>Note</i>:</b> </b></p>
+       
+<ul>
+     <li> <b><b>The input file names are <i><tt>W93-01.000</tt></i> through 
+     <i><tt>W93-01.999</tt></i>.  This is a bit extreme, typically the max 
+ is <i><tt>&lt;tapeid&gt;.250</tt></i>.</b></b></li>
+      <li> <b><b>All input files can either be gzip-ed or ungzip-ed for Melbourne
+  data. For Darwin data, the files must be a compressed tar archive.The first
+  file, of both data types, must be uncompressed.</b></b></li>
+      <li> <b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will
+  create directory, '<i><tt>gvs_level_1_W93-01</tt></i>' under '<i><tt>/gvs/productions/</tt></i>' 
+  and both '<i><tt>1C-51</tt></i>' and '<i><tt>1B-51</tt></i>' under it.</b></b></li>
+         
+</ul>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 6:</font></font></b></b></h4>
+     <b><b>1C-51 products for tape, <i><tt>W93-01</tt></i>, had been generated; 
+  these products are still on disk. I want to generate 2A-54 products. How 
+ do I do that?</b> </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 disk W93-01&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; -qc_dir /gvs/productions/g</i>vs_level_1_W93-01/1C-51<br><i>&nbsp;&nbsp;&nbsp;&nbsp; -o /gvs/productions/ 2A-54 2A-54.opt</i></b></b></pre>
+     <b><b><i>where:</i></b> <br>
+      <b>2A-54.opt contain only '<i><tt>-v</tt></i> '.</b></b>    
+</ul>
+     <b><b>The above command will generate <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-54.html">2A-54</a> products under '<i><tt>/gvs/productions/</tt></i>'
+  for tape, <i><tt>W93-01</tt></i>, using 1C-51 products located in '<i><tt>/gvs/productions/gvs_level_1_W93-01/1C-51</tt></i>'.</b> 
+  </b>    
+<p><b><b><i>Note</i>:</b> </b></p>
+       
+<ul>
+     <li> <b><b>Since the input files to level II programs are expected to
+ be  on disk, the device is not necessary and can be anything. Something
+must  be specified because this parameter is a place holder dummy argument.
+Specifying       <tt>disk</tt> helps document the command.</b></b></li>
+      <li> <b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will
+  use data in this directory, '<i><tt>/gvs/productions/gvs_level_1_W93-01/1C-51</tt></i>', 
+  for input to level II program.</b></b></li>
+      <li> <b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will
+  also create directory '<i><tt>/gvs/productions/gvs_2A-54_W93-01</tt></i>'
+  and place all outputs there.</b></b></li>
+         
+</ul>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 7:</font></font></b></b></h4>
+     <b><b>Both 1C-51 and 2A-54 products for tape, <i><tt>W93-01</tt></i>,
+ had  been generated; they are still on disk. Now, how do I generate 2A-53-d
+ products?</b>  </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 disk W93-01 -i /gvs/productions/&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; -o /gvs/productions/ 2A-53-d 2A-53-d.opt</i></b></b></pre>
+     <b><b><i>where:</i></b> </b>            
+  <ul>
+     <li> <b><b>2A-53-d.opt may contain '<i><tt>-v -b 1.5 -f 4.0 -n 0 -p
+1000   -t 303 -d 295 -g sitelist_cscale -k 300. -a 1.4 -m 1</tt></i>' for
+Darwin   data set.</b></b></li>
+      <li> <b><b>2A-53-d.opt may contain '<i><tt>-v -b 1.5 -f 4.6 -n 0 -p 
+1000  -t 303 -d 295 -k 300. -a 1.4 -m 0 -g mlb_sitelist</tt></i>' for Melbourne
+  data set.</b></b></li>
+                 
+  </ul>
+         
+</ul>
+     <b><b>The above command will generate <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-d.html">2A-53-d</a> products under   '<i><tt>/gvs/productions/</tt></i>'
+for tape, <i><tt>W93-01</tt></i>, using   1C-51 data located in '<i><tt>$top_input_dir/gvs_level_1_W93-01/1C-51</tt></i>' 
+  and 2A-54 data located in '<i><tt>$top_input_dir/gvs_2A-54_W93-01/</tt></i>', 
+  where <i>$top_input_dir</i> = '<i><tt>/gvs/productions/</tt></i>'.</b> </b>
+   
+<p><b><b><i>Note</i>:</b> </b></p>
+       
+<ul>
+     <li> <b><b>Since the input files for level II programs are expected
+to  be on disk, the device is not necessary and can be anything. Something
+must   be specified because this parameter is a place holder dummy argument.
+Specifying       <tt>disk</tt> helps document the command.</b></b></li>
+      <li> <b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will
+  create directory '<i><tt>/gvs/productions/gvs_2A-53-d_W93-01</tt></i>'
+and   place all outputs there.</b></b></li>
+      <li> <b><b>The above options are recommended.</b></b></li>
+         
+</ul>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 8:</font></font></b></b></h4>
+     <b><b>If I have either Darwin or Melbourne data on disk. It had been 
+staged   on disk in the current directory from an 8mm tape named, <i><tt>W93-01</tt></i>. 
+  How do I generate all of level I and II products?</b> </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 disk W93-01 level_1 level1.opts&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-53-w 2A-53-w.opts 2A-53-c 2A-53-c.opts&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-53-d 2A-53-d.opts 2A-53-v4 2A-53-v4.opts 2A-54 2A-54.opts 2A-55 2A-55.opts</i></b></b></pre>
+     <b><b><i>where</i>:</b> <br>
+      <b>&lt;product&gt;.opts is a file containing product's options, each
+ listed  on one line.</b></b>    
+</ul>
+     <b><b>The above command will generate the following products: <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1B-51 </a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1C-51 </a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-w.html">2A-53-w</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-c.html">2A-53-c</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-d.html">2A-53-d</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-v4.html">2A-53-v4</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-54.html">2A-54</a>, and <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-55.html">2A-55</a> for tape named, <i><tt>W93-01</tt></i>,
+  locating in the current directory.</b> </b>    
+<p><b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will prepend 
+  '<i><tt>-t L</tt></i>' to the option list for <i>2A-53-w</i> if the data 
+ set is Darwin. It will append options, <i><tt>-c, -f </tt></i>(Melbourne 
+only)<i><tt>, and -b, </tt></i>to the option list for <i>level_1</i>. See 
+the html documentation for each product for specific product options. Normally, 
+though, you only need to specify '<i><tt>-v'</tt></i> as the only option to
+the program to get extensive diagnostic reporting during execution. For example,
+each <i><tt>*.opt</tt></i> file, above ,contains the string '<i><tt>-v'</tt></i> 
+so that all defaults are used. Note, though, the <i><tt>*.opt</tt></i> file 
+can be empty; it must exist but it can be empty.</b> </b></p>
+       
+<p><b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will create 
+  the following directories and will put the appropriate outputs there:</b> 
+  </b></p>
+       
+<ul>
+     <li> <b><b><i><tt>./gvs_level_1_W93-01/1C-51,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_level_1_W93-01/1B-51,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-d_W93-01,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-w_W93-01,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-c_W93-01,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-v4_W93-01,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-54_W93-01,</tt></i></b></b></li>
+      <li> <b><b><tt>.<i>/gvs_2A-55_W93-01</i></tt>.</b></b></li>
+         
+</ul>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 9:</font></font></b></b></h4>
+     <b><b>If I have Melbourne data on an 8mm tape, how do I generate all 
+of  level I and II products <i><tt>starting</tt></i> with the <i><tt>50th</tt></i> 
+  data file on tape?</b> </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 /dev/8mm1 N0001 -start_raw_file N0001.050&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; level_1 level1.opts&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-53-w 2A-53-w.opts 2A-53-c 2A-53-c.opts&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-53-d 2A-53-d.opts 2A-53-v4 2A-53-v4.opts 2A-54 2A-54.opts&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-55 2A-55.opts</i></b></b></pre>
+     <b><b><i>where</i>:</b> <br>
+      <b>&lt;product&gt;.opts is a file containing product's options, listed 
+ in one line.</b></b>    
+</ul>
+     <b><b>The above command will generate <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1B-51</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1C-51</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-w.html">2A-53-w</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-c.html">2A-53-c</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-d.html">2A-53-d</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-v4.html">2A-53-v4</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-54.html">2A-54</a>, and <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-55.html">2A-55</a> products for tape, <i><tt>N0001</tt></i>,
+  residing on device '<i><tt>/dev/8mm1</tt></i>'. In addition, the script
+will  start processing at the 50th file on tape. For Melbourne data, the
+50th file  is named,'<i><tt>$tapeid.050</tt></i>'; in this case, it is named,
+'<i><tt>N0001.050</tt></i>'.  Note: The start file option only applies to
+level1 processing.</b> </b>    
+<p><b><b>The script will append options, <i><tt>-c, -f, and -b, </tt></i>to 
+  the option list for <i>level_1</i>. Normally, though, you only need to specify
+ '<i><tt>-v</tt></i>' as the only option to the program for extensive diagnostic
+ reporting during the course of program execution. The specified products
+above are configured to use default runtime values.</b> </b></p>
+       
+<p><b><b>In addition, this script will create the following directories and 
+  will put the appropriate outputs there:</b> </b></p>
+       
+<ul>
+     <li> <b><b><i><tt>./gvs_level_1_N0001/1C-51</tt></i>,</b></b></li>
+      <li> <b><b><i><tt>./gvs_level_1_N0001/1B-51</tt></i>,</b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-d_N0001</tt></i>,</b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-w_N0001</tt></i>,</b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-c_N0001</tt></i>,</b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-v4_N0001</tt></i>,</b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-54_N0001</tt></i>,</b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-55_N0001</tt></i>.</b></b></li>
+         
+</ul>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 10:</font></font></b></b></h4>
+     <b><b>If I have Darwin data on an 8mm tape, how do I generate all of 
+level   I and II products <i><tt>starting</tt></i> with file, <i><tt>/gvs/productions/gvs_level_1N0001/N0001.010_tmp/2D194D18.vol.Z</tt></i>?</b> 
+  </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1n2 /dev/8mm1 N0001&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; -start_raw_file </i>/gvs/productions/gvs_level_1N0001/N0001.010_tmp/2D194D18.vol.Z<br><i>&nbsp;&nbsp;&nbsp;&nbsp; level_1 level1.opts&nbsp;&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-53-w 2A-53-w.opts 2A-53-c 2A-53-c.opts 2A-53-v4 2A-53-v4.opts&nbsp;<br>&nbsp;&nbsp;&nbsp;&nbsp; 2A-53-d 2A-53-d.opts 2A-54 2A-54.opts 2A-55 2A-55.opts</i></b></b></pre>
+     <b><b><i>where</i>:</b> <br>
+      <b>&lt;product&gt;.opts is a file containing product's options, listed 
+ in one line.</b></b>    
+</ul>
+     <b><b>The above command will generate <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1B-51</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1C-51</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-w.html">2A-53-w</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-c.html">2A-53-c</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-v4.html">2A-53-v4</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-53-d.html">2A-53-d</a>, <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-54.html">2A-54</a>, and <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/2A-55.html">2A-55</a> products for tape, <i><tt>N0001</tt></i>,
+  residing on device '<i><tt>/dev/8mm1</tt></i>'. In addition, the script
+will  start processing at the specified file, '<i><tt>/gvs/productions/gvs_level_1N0001/N0001.010_tmp/2D194D18.vol.Z</tt></i>'. 
+  <i>Note</i>: The start file option only applies to level1 processing.</b> 
+  </b>    
+<p><b><b><font color="#b22222">all_tape_level_1n2</font><i> </i>will apppend 
+  '<i><tt>-t L</tt></i>' to the option list for <i>2A-53-w</i> since<i> </i>the 
+  data set is Darwin. It will append options, <i><tt>-c, and -b, </tt></i>to 
+  the option list for <i>level_1</i>. Normally, though, you only need to specify
+ '<i><tt>-v</tt></i>' as the only option to the program for extensive diagnostic
+ reporting during the course of program execution. The specified products
+above are configured to use default runtime values.</b> </b></p>
+       
+<p><b><b>In addition, this script will create the following directories and 
+  will put the appropriate outputs there:</b> </b></p>
+       
+<ul>
+     <li> <b><b><i><tt>./gvs_level_1_N0001/1C-51</tt></i>,</b></b></li>
+      <li> <b><b><i><tt>./gvs_level_1_N0001/1B-51,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-d_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-w_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-c_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-53-v4_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-54_N0001,</tt></i></b></b></li>
+      <li> <b><b><i><tt>./gvs_2A-55_N0001</tt></i>.</b></b></li>
+         
+</ul>
+          
+<h4> <b><b><font color="#008080"><font size="+1">Example 11:</font></font></b></b></h4>
+     <b><b>I have either Darwin or Melbourne data on disk. It had been staged
+  to disk in directory, '<i><tt>/gvs/data/</tt></i>', from an 8mm tape named, 
+  W93-01. How do I generate 1C-51 products using <font color="#b22222">all_tape_level_1</font> 
+  but <i><tt>not</tt></i> <font color="#b22222">all_tape_level_1n2</font>?</b> 
+  </b>    
+<p><b><b><i>Command</i>:</b> </b></p>
+       
+<ul>
+                 
+  <pre><b><b><i>all_tape_level_1 disk W93-01 -i /gvs/data/ level_1 -v -B<br>&nbsp;&nbsp;&nbsp;&nbsp; -c /gvs/data/1C-51</i></b></b></pre>
+         
+</ul>
+     <b><b>The above command will generate <a
+ href="http://trmm-fc.gsfc.nasa.gov/trmm_gv/software/gvs/level_1.html">1C-51</a> products in '<i><tt>/gvs/data/1C-51/</tt></i>'
+  for tape, <i><tt>W93-01</tt></i>, residing on disk located in '<i><tt>/gvs/data/</tt></i>'.</b> 
+  </b>    
+<p><b><b><i>Note</i>:</b> </b></p>
+       
+<ul>
+     <li> <b><b>The input file names are <i><tt>W93-01.000</tt></i> through 
+     <i><tt>W93-01.999.      </tt></i>This is a bit extreme, typically the 
+ max is <i><tt>&lt;tapeid&gt;.250</tt></i>.</b></b></li>
+      <li> <b><b>All input files can either be gzip-ed or ungzip-ed for Melbourne
+  data. For Darwin data, the files must be a compressed tar archive.The first
+  file, of both data types, must be uncompressed.</b></b></li>
+      <li> <b><b><font color="#b22222">all_tape_level_1n2<i> </i></font>will
+  create directory, '<i><tt>/gvs/data/1C-51</tt></i>' if it doesnot exist
+and  will place 1C-51 products there.</b></b></li>
+         
+</ul>
+          
+<hr width="100%">     
+<p><b><b><font color="#000080"><font size="+3">Return Values</font></font></b> 
+  </b></p>
+       
+<p><b><b>Both <font color="#b22222">all_tape_level_1</font> and <font
+ color="#b22222">all_tape_level_1n2</font> will exit with one of the following
+  codes:</b> </b></p>
+       
+<pre><b><b><i><tt>-2</tt></i> : Program was aborted by <i><tt>^C</tt></i>.&nbsp;<br><i><tt>-1</tt></i> : Failure occurred.&nbsp;<br>&nbsp;<i><tt>0</tt></i> : Everything is successful.&nbsp;<br>&nbsp;<i><tt>2</tt></i> : There is not enough space to continue.</b></b></pre>
+          
+<hr width="100%">     
+<h3> <b><b><font color="#000080"><font size="+3">Authors</font></font></b></b></h3>
+     <b><b>John H. Merritt, <i><tt>NASA/GSFC/TRMM Office</tt></i>.</b> <br>
+    <b>Ngoc-Thuy Nguyen, <i><tt>NASA/GSFC/TRMM Office</tt></i>.</b> </b><br>
+    <br>
+   <br>
+  <br>
+ <br>
+</body>
+</html>

@@ -1,0 +1,143 @@
+#! /usr/bin/perl
+#-*-Perl-*-
+#
+# Convert the HDF file (granuled or single vos) for (level I, 2A-53, 
+# 2A-54, 3A-53, and 3A-54) to gif or pgm file(s).
+# The HDF file can either be compressed or uncompressed.
+# The gif or pgm filename(s) are printed to STDOUT.
+#
+#
+# By:
+#     Ngoc-Thuy T. Nguyen
+#     Science Systems and Applications, Inc.
+#     NASA/TRMM Office
+#     Thuy.Nguyen@gsfc.nasa.gov
+#
+#     Copyright 1996, 1997
+#
+######################################################################
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'gvs_production_common.pl';
+
+if ($#ARGV < 1) {
+  USAGE:
+    print STDERR "Convert GV HDF File to Image(s).\n";
+	print STDERR "Usage ($PROG_VERSION)\n";
+	print STDERR "    $this_prog {product} hdf_file[.gz|.Z] \n";
+	print STDERR "\t  where: \n",
+                 "\t   product = 1B-51 | 1C-51 | 2A-53 | 2A-54 | 3A-53 | 3A-54\n";
+	print STDERR "\t   HDF file can either be granuled or single VOS.\n";
+	print STDERR "\t   GIF file will be created for level I.\n";
+	print STDERR "\t   PGM file will be created for level II & III.\n";
+	exit (-1);					# 
+}								# 
+
+$type = shift;
+$hdf_file = shift;
+local($compressed) = 0;
+@fname_path = split(/\//, $hdf_file);
+$new_hdf_file = $fname_path[$#fname_path];
+$new_hdf_file =~ s/(\.gz$)|(\.Z$)//;     # Remove .gz or .Z extension
+$new_hdf_file .= ".tmp";
+# Uncompress 
+do uncompress_file ($hdf_file, $new_hdf_file);
+$hdf_file = $new_hdf_file;
+	
+if ($type eq "1C-51" || $type eq "1B-51") {				# 
+	print STDERR "Converting $hdf_file to UF files...\n";
+	open(UF_FILES, "level_1_ghdf_to_singlevos_uf $hdf_file|");
+	@uf_files = <UF_FILES>;		# 
+	close(UF_FILES);			# 
+
+	foreach $f (@uf_files) {	# 
+		chop $f;
+		print STDERR "Converting $f to gif...\n";
+		system("any_to_gif -x 400 -r 200.0 ".$f); # 
+		$f =~ s/.*\///;
+		$outfile = "1B51.$f" if $type eq "1B-51";
+		$outfile = "1C51.$f" if $type eq "1C-51";
+		$outfile =~ s/uf.*$/gif/;
+		unlink $f;				# 
+	}		
+	goto DONE;
+}
+elsif ($type eq "2A-53") {
+	$ascii_prog = "2A-53_hdf2ascii";
+	$image_progrog = "rrmap_to_pgm";
+	$pcode = "3";
+}
+elsif ($type eq "2A-54") {
+	$ascii_prog = "2A-54_hdf2ascii";
+	$image_progrog = "csmap_to_pgm";
+	$pcode = "4";
+}
+elsif ($type eq "3A-53") {
+	$ascii_prog = "level_3_rrmap_hdf2ascii 3A-53";
+	$image_progrog = "rrmap_to_pgm";
+	@shdf_files = ($hdf_file);
+	do convert_hdf2image(*shdf_files, $ascii_prog, $image_progrog);
+	goto DONE;
+}
+elsif ($type eq "3A-54") {
+	$ascii_prog = "level_3_rrmap_hdf2ascii 3A-54";
+	$image_progrog = "rrmap_to_pgm";
+	@shdf_files = ($hdf_file);
+	do convert_hdf2image(*shdf_files, $ascii_prog, $image_progrog);
+	goto DONE;
+}
+else {
+	print STDERR "Unknown type: $type\n";
+	goto USAGE;
+}
+print STDERR "Converting $hdf_file... to single VOS hdf files...\n";
+open(SHDF_FILES, "level_2_ghdf_to_singlevos_hdf $pcode $hdf_file|");
+@shdf_files = <SHDF_FILES>;
+print STDERR "shdf: @shdf_files\n";
+close(SHDF_FILES);
+
+do convert_hdf2image(*shdf_files, $ascii_prog, $image_progrog);
+
+DONE:
+unlink $hdf_file;
+
+exit(0);
+
+######################################################################
+
+sub convert_hdf2image {
+	local(*shdf_files, $ascii_prog, $image_progrog) = @_;
+	# Convert hdf to ascii then to image file. Print the
+    # image filename to stdout. for level 2,3
+	while(@shdf_files) {
+		$f = shift @shdf_files;
+		chop $f if ($f =~ /[\n|\r]/);
+		$outfile = $f;
+		$outfile  =~ s/...$/ascii/;   # Remove tmp
+		$outfile  =~ s/\.HDF//;   # Remove HDF
+		$outfile  =~ s/\.hdf//;   # Remove hdf
+		$cmd = "$ascii_prog $f $outfile";
+		print STDERR "Converting $f to  GIF file ... \n";
+		system($cmd);
+		unlink ($f);
+		$asciifile = $outfile;
+		$outfile =~ s/ascii$/pgm/;
+		system("$image_progrog <$asciifile >$outfile");
+		unlink ($asciifile);
+		print STDOUT "$outfile\n";
+	}
+}
+
+
+
+sub doexit_handler {
+	local($signal) = @_;
+    # Ignore signals
+	do ignore_catched_signals();	
+	local($rc) = -1;
+	$rc = -2 if ($signal eq 'INT' || $signal eq 'KILL' || $signal eq 'STOP');
+
+	kill $signal, 0;
+	while (wait != -1) {;}
+
+	exit($rc);
+}

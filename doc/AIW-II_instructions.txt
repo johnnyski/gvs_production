@@ -1,0 +1,50 @@
+7/9/96 - John Merritt -- E-mail: john.merritt@gsfc.nasa.gov
+
+Here are the production execution instructions in preparation for
+the AIW-II. You should use GVS 3.1 because
+the 2A-53 programs now generate Out-of-bound numbers and are the latest
+version from the PI's. --<< YOU MUST INSTALL GVS 3.1 >>-- The scripts
+provided in GVS 3.1 require HDF on input and generate HDF upon output.
+However, I have written 6 scripts that alter this data-flow behavior so that
+the algorithms can process the 1C-51 and 2A-54 products as generated
+for the AIW-II.  The scripts accept UF and ascii input and generate
+ascii rain map output (except for 2A-55).  The program 2A-55_hdf2ascii
+can convert 2A-55 hdf output to ascii, however, it is not done
+automatically by these procedures.
+
+There are six scripts, two of which you need only
+be concerned about.  The two scripts called: level2_darwin.csh and
+level2_melbourne.csh, each set up the options lists for proper
+execution, as instruction by the PI's, of 2A-53-d (Danny Rosenfeld's),
+2A-53-w (Witek Krajewski), and 2A-55 (University of Washington), then
+call 'aiwII_level2' (a special version of all_tape_level_1n2).  The
+remaining three scripts, prefix by 'singlevos_' are all controlled
+from 'aiwII_level2'.
+
+All you need to be concerned with is 'level2_darwin.csh' and
+'level2_melbourne.csh'. The first has runtime parameters defined for
+Darwin, AU. processing and the latter has runtime parameters defined for
+Melbourne, FL.
+
+You *must* specify the tape-id that was used when creating the 1C-51 and
+2A-54 products.  And, you *must* run these programs in the directory
+that contains the 1C-51 and 2A-54 product directories.  The usage is:
+
+level2_darwin.csh L950118_950129
+
+  -or-
+
+level2_melbourne.csh W950921_950922
+
+No visible output is produced so you can run the scripts in the background
+from the command line.  A log file is created and it is called TAPEID.log.
+Where, TAPEID is the tape id you specified on the command line.scripts.
+
+It is assumed that the input files for the products, 1C-51 and 2A-54
+are already on disk and in a directory that is in the directory
+that has been prepared for 'level2_.?.csh' execution.
+
+If you need further assistance, please contact me via e-mail.
+
+John
+

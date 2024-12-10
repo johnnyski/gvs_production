@@ -1,0 +1,35 @@
+-- This table contains the version numbers of the TSDIS products.  This table
+-- will be used by 'all_tape_level_1n2', 'level_3', 'all_tape_2A-52',
+-- and 'monthly_2A-52' to create products' filenames.
+-- The input version# column is used by 'all_tape_level_1n2' only to 
+-- construct program's input filename(s).
+--
+-- Product's filename format: 
+--    4-char-prod.yymmdd.granule#.4-char-sitename>.TSDIS-product-version#.HDF
+--    i.e., 2A54.921002.13.MELB.1.HDF 
+--
+-- Note:
+--  *  '0' in the output version # column indicates that the program itself 
+--     will create filename.
+--
+--  *  '0' in the input version # column indicates that the product will not 
+--     be used as input into any program.
+--
+--  *  Version Number does not contain decimal.
+--
+-- [Product]  [Output Version #]  [Input Version #]
+	1B-51 			0					 0
+	1C-51 			0					 2
+	2A-52i 			4					 0
+	2A-53-c 		4					 0
+	2A-53-w 		4					 0
+	2A-53-d 		4					 0
+	2A-53-v4 		4					 4
+	2A-53-dc		5					 5
+	2A-54 			4					 4
+	2A-54-dc		5					 5
+	2A-55			4					 4
+	2A-55-dc		5					 5
+	3A-53			5					 0
+	3A-54			5					 0
+	3A-55			5					 0

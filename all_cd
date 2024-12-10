@@ -1,0 +1,193 @@
+#! /usr/bin/perl
+#-*-Perl-*-
+
+# This program will generate all of GVS' products for a whole CD of WSR-88D 
+# or Lassen data.
+#
+#
+# Exit code: 
+#               -2 -- ($INTER_CODE)Program was aborted by '^C'.
+#               -1 -- ($ERROR_CODE) When there is failure.
+#                0 -- ($SUCCESS_CODE)Everything is successful.
+#                2 -- ($OUT_OF_SPACE_CODE) There is not enough space to continue.
+# 
+# Required program(s):
+#   'all_tapes'
+#
+# By:
+#     Thuy T. Nguyen
+#     NASA/TRMM Office
+#     Thuy.Nguyen@gsfc.nasa.gov
+#
+#     Copyright 1996
+#
+###########################################################################
+
+
+unshift(@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'all_tape_common.pl';
+
+# Set defaults
+$input_dir = "/cdrom/";
+$curr_dir = `pwd`;
+chop $curr_dir;
+$curr_dir = $curr_dir."/";
+$working_dir = $curr_dir;
+$output_dir = $curr_dir;
+$prod_list = "";
+$options = "";
+$data_type = "W";  # WSR88D,
+do process_argvs();
+
+$rc = &run_all_cd();
+
+
+exit($rc);
+
+############################## Sub Routines ##############################
+
+sub process_argvs {
+	if ($#ARGV < 1) {
+		do usage();
+	}
+	# Get options
+	while (@ARGV) {
+		$str = shift @ARGV;
+		if ($str =~ /^\-/) {
+			if ($str eq "-g") {
+				$options = "$options $str";
+			}
+			else {
+				do usage() if ($str ne "-t" &&
+							   $str ne "-i" && $str ne "-o" && $str ne "-w");
+				$str1 = shift @ARGV;
+				do usage() if ($str1 =~ /^\-/);
+				$data_type = $str1 if ($str eq "-t");
+				$dir = &change2absolute_dir($str1);
+				
+				$input_dir = $dir if ($str eq "-i");
+				$working_dir = $dir if ($str eq "-w");
+				$output_dir = $dir if ($str eq "-o");
+
+				if ($data_type ne "L" && $data_type ne "W") {
+					print STDERR "$this_prog: Only recognizes either W (WSR88D) or L (LASSEN).\n";
+					do usage();
+				}
+			}
+		}
+		else {
+			# No more option
+			unshift (@ARGV, $str);
+			last;
+		}
+	}
+	# Get products and their options_files
+
+	while (@ARGV) {
+		$prod = shift @ARGV;
+		$opts_file = shift @ARGV;
+		do usage() if ($prod eq "" || $opts_file eq "");
+		if (!(-e $opts_file)) {
+			print STDERR "$this_prog: Error: $prod 's option file <$opts_file> doesnot exist.\n";
+			exit(-1);
+		}
+		$prod_list = "$prod_list $prod $opts_file";
+		
+	}
+	
+	do usage() if ($prod_list eq "");
+
+
+} # process_argvs
+
+sub usage {
+	print STDERR "Usage ($PROG_VERSION)\n";
+	print STDERR "    $this_prog [options] product product_options_file\n";
+	print STDERR "\t\t[product product_options_file]...\n";
+
+	print STDERR "\n  options:\n";
+	print STDERR "\t-g:             Run level II at hour-granule level. Default is to\n";
+	print STDERR "\t                run at single vos level (optimize). \n";
+	print STDERR "\t-t data_type:   Data type (W = WSR88D, L = LASSEN). Default = W.\n";
+	print STDERR "\t-i input_dir:   Specify input (CD) directory.  Default = /cdrom.\n";
+	print STDERR "\t-w working_dir: Specify working directory.  Default = `pwd`.\n";
+	print STDERR "\t-o ouput_dir:   Specify top output directory.  Default = `pwd`.\n";
+
+
+	exit($SEVERE_ERROR_CODE);
+}
+
+
+sub run_all_cd {
+	
+	$command = "";
+	$device = "CD";
+	opendir(DIR, $input_dir);
+	# Get dirs for Melbourne data.
+	if ($data_type eq "W") {
+		@cd_contents = grep (!/^\.\.?$/, readdir(DIR));
+		while (@cd_contents) {
+			# dir. name is the same as tapeid.
+			local($tapeid) = shift @cd_contents;
+			$file = "$input_dir$tapeid";
+			next if (!(-d $file));  # skip--not a directory.
+
+			$command = "$command $device $tapeid -raw_dir $file -w $working_dir -o $output_dir  $prod_list";
+		}
+	}
+	else {
+		# Lassen data -- CD has no sub. dir.
+		# get tapeid from CD
+		@cd_contents = grep (/\.\d\d\d$/, readdir(DIR));
+		$firstfile = $cd_contents[0];
+		($tapeid = $firstfile) =~ s/\.\d\d\d$//;
+
+		$command = "$command $device $tapeid -raw_dir $input_dir -w $working_dir -o $output_dir  $prod_list";
+	}	
+	closedir(DIR);
+	$command = "all_tapes $command";
+	print STDERR "$this_prog: Executing...$command\n";
+
+	system($command);
+	$status = $? >> 8;
+	$signal = $? & 255;
+	do doexit_handler($signal) if ($signal != 0);
+	
+	if (&interrupted($status)) {
+		print STDERR "$this_prog: Interrupted.\n";
+		$rc = $INTER_CODE;
+	}
+	elsif (&is_severe_error($status)) {
+		print STDERR "$this_prog: Failed executing: $command\n";
+		$rc = SEVERE_ERROR_CODE; # failed
+	}
+	elsif (&out_of_space($status)) {
+		$rc = $OUT_OF_SPACE_CODE;
+	}
+	else {
+		print STDERR "$this_prog: Done executing successfully... $command\n";
+		$rc == $SUCCESS_CODE;
+	}
+	return $rc;
+}
+
+sub doexit_handler {
+	
+	local($signal) = @_;
+    # Ignore signals
+	do ignore_catched_signals();
+	# Restore STDERR and STDOUT. 
+	close(1);
+	close(2);
+	open(STDOUT, ">/dev/tty");
+	open(STDERR, ">/dev/tty");
+	$rc = SEVERE_ERROR_CODE;
+	$rc = $INTER_CODE if ($signal eq 'KILL' || $signal eq 'STOP' || 
+						  $signal eq 'INT');
+	exit($rc);
+}
+
+
+
+
+

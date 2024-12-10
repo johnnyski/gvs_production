@@ -1,0 +1,603 @@
+#! /usr/bin/perl
+#-*-perl-*-
+#
+#
+# level_3
+#     Automates the execution of level 3 of GVS production system for 
+#     the whole data set from any site residing on disk.
+#
+#
+# Exit code: 
+#             -2 -- ($INTER_CODE)Program was aborted by '^C'.
+#             -1 -- ($ERROR_CODE) When there is failure.
+#              0 -- ($SUCCESS_CODE)Everything is successful.
+#              2 -- ($OUT_OF_SPACE_CODE) There is not enough space to continue.
+#
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#
+# By: Ngoc-Thuy Nguyen
+#     Science Systems and Applications, Inc. (SSAI)
+#     NASA/TRMM Office
+#     September 4, 1997
+#
+#     Copyright 1997-1998
+#
+##############################################################################
+
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'all_tape_common.pl';
+
+@save_prog_cmd = @ARGV;
+$yes_send_mail = 1;        # Send mail to the summiter when exit. 
+
+# defining some global variables
+%programs = (
+#  PRODUCT     EXECUTABLE  -- The product doesn't have to be the same
+#                             as the executable.
+   '3A-53',	'3A-53',
+   '3A-53-dc',	'3A-53',
+   '3A-54',	'3A-54',
+   '3A-54-dc',	'3A-54',
+   '3A-55',	'3A-55',
+   '3A-55-dc',	'3A-55'
+			 );
+# Set default
+$top_input_dir = $save_curr_dir;
+$top_output_dir = $save_curr_dir;
+$tape_id = "unknown";
+$device  = "disk";
+# list of products specified by the user 
+@selected_prods = ();
+
+$remove_old_products = 0;
+
+# Nothing is selected, by default.
+foreach $p (keys(%programs)) {
+	$product_list{$p} = 0;
+}
+$this_prog_dirname = "level3_$$/";
+$top_working_dir_prefix = $save_curr_dir;
+$top_working_dir_suffix = $this_prog_dirname."working/";
+$top_working_dir = "";
+
+$not_report_monitorps = 0;  # Default: yes, send to monitorps.
+$update_inventory_db = 0;   # Not send information to 'gvi_db'.
+$prod_processed_num = 1;  # Default.  Number of time this product is being 
+                          # processed--or num of reprocessed.
+$version_fname = "$gvs_data_path/products_version_numbers";  # Default
+
+# Define time gap parameters used for weighting factor in rainfall accumulation
+# between VOSs.  First value in parenthesis is maximum time gap (minutes)
+# allowed for using the difference of VOS times as weighting factor.  
+# Second value is used as the time gap if actual time gap exceeds maximum.
+
+@timegap_wsr88d = (10, 5); # (max time, constant time) for WSR-88D radar.
+@timegap_non_wsr88d = (15, 10); # (max time, constant time) for non-WSR-88D.
+
+do process_argvs(@ARGV);
+print STDERR "$this_prog: Will not send status messages to monitorps.\n" if ($not_report_monitorps == 1);
+print STDERR "$this_prog: Will send information to the inventory DB.\n" 
+	if ($update_inventory_db);
+@active_prods_list = @selected_prods;
+
+# $top_working_dir_prefix2 should be the most top dir. where 
+# working, tmp dirs are under.
+# 
+$top_working_dir_prefix2 = "$top_working_dir_prefix$this_prog_dirname";
+
+$top_working_dir = "$top_working_dir_prefix$top_working_dir_suffix" 
+	if ($top_working_dir eq ""); # Unique to this process.
+
+do create_dir($top_working_dir, 0, 1); 
+
+print STDERR "$this_prog: Top working dir = $top_working_dir\n";
+chdir $top_working_dir;
+	
+local($any_failure) = 0;
+# process monthly products for each product at a time.
+foreach $prod (@selected_prods) {
+	$jobnum = 0;
+	local($input_dir) = "";
+	if ($prod eq "3A-53" || $prod eq "3A-54") {
+		$input_dir = $top_input_dir.&get_dir_name("2A-53-v4", $tape_id);
+		# check for dual cappi level 2 directory if this directory doesn't exist.
+		if (! -e $input_dir && -e $top_input_dir.&get_dir_name("2A-53-dc", $tape_id)) {
+		    $input_dir = $top_input_dir.&get_dir_name("2A-53-dc", $tape_id);
+		}
+	}
+	elsif ($prod eq "3A-53-dc" || $prod eq "3A-54-dc") {
+		$input_dir = $top_input_dir.&get_dir_name("2A-53-dc", $tape_id);
+	}
+	elsif ($prod eq "3A-55") {
+		$input_dir = $top_input_dir.&get_dir_name("2A-55", $tape_id);
+		# check for dual cappi level 2 directory if this directory doesn't exist.
+		if (! -e $input_dir && -e $top_input_dir.&get_dir_name("2A-55-dc", $tape_id)) {
+		    $input_dir = $top_input_dir.&get_dir_name("2A-55-dc", $tape_id);
+		}
+	}
+	elsif ($prod eq "3A-55-dc") {
+		$input_dir = $top_input_dir.&get_dir_name("2A-55-dc", $tape_id);
+	}
+	else {
+		next; # Skip this product
+	}
+	if (! opendir(INDIR, $input_dir)) {
+	    print STDERR "$this_prog: Error: Failed reading dir <$input_dir>\n";
+	    &clean_up();
+	    &do_exit($SEVERE_ERROR_CODE);
+	}
+	local(@infile_list) = grep(/HDF(.gz|.Z)?$/, readdir(INDIR));
+	closedir(INDIR);
+	if ($#infile_list < 0) {
+		print STDERR "$this_prog: Error: There is no input files in $input_dir\n";
+		last;
+	}
+
+	@infile_list = sort gv_product_filenames_sort_compare_func @infile_list;
+	local($prod_output_dir) = $top_output_dir.&get_dir_name($prod, $tape_id);
+
+	# Save options to option file in output dir.
+	system("echo \"$options_list{$prod}\">$prod_output_dir/options");
+
+	while (@infile_list) {
+		# HDF file contains data for monthly for 3A-54, 3A-55 and 
+		# pentad (5 days) for 3A-53
+		local($rc) = &create_one_hdf_file($prod, $input_dir, *infile_list, 
+										  $prod_output_dir);
+		if ($rc < 0) {
+			print STDERR "$this_prog: Error: create_one_hdf_file() failed for $prod starting with jobnum: $jobnum. Abort.\n";
+			last;
+		}
+		elsif ($rc > 0) {
+			print STDERR "$this_prog: Warning: create_one_hdf_file() failed $rc times for $prod starting with jobnum: $jobnum.\n";
+			$any_failure++;
+			# continue
+		}
+	}
+	if ($jobnum > 0) { # finished
+		do set_products_status(*products_status, $stat_array[4], ($prod));
+		
+		do send_status_msg(++$jobnum, $programs{$prod}, "NOFILE", $stat_array[4]);
+	}
+
+} #each prod
+
+chdir $save_curr_dir;
+do clean_up();
+if ($any_failure > 0) {
+	&do_exit($SEVERE_ERROR_CODE);
+}
+print STDERR "$this_prog: Success.\n";
+&do_exit($SUCCESS_CODE);
+
+################################ Subroutines #################################
+
+
+sub usage {
+	print STDERR "\nGround Validation Production Automation Program for Level III\n";
+	print STDERR " Usage ($PROG_VERSION)\n";
+	print STDERR "   $this_prog tape_id [-i top_input_dir] [-o top_output_dir] \n",
+                 "          [-w working_dir] [-remove_old_products] [-do_not_send_mail]\n",
+                 "          [-versions_file filename] [-not_report_monitorps]\n",
+		 "          [-wsr88d]\n",
+#                 "          [-update_inventory_db [-product_processed_num num] ]\n",
+	             "          product product_options_file  [product product_options_file]...\n";
+	print STDERR " where,\n";
+	print STDERR "    -i:  Specify level II top input dir where gvs_<2A-53-v4|2A-55>_<tapeid>s \n",
+                 "         are under. Default: ./\n";
+	print STDERR "    -o:  Specify level III top output dir for gvs_<product>_<tapeid>s. Default: ./\n";
+
+	print STDERR "    -w:  Specify working directory. Default = `pwd`.\n";
+	print STDERR "    -remove_old_products: Yes, remove existing product(s). Default: exit.\n";
+	print STDERR "    -do_not_send_mail : Do not send a mail message to the production\n",
+                 "         submitter. Default: This program will send a\n",
+                 "         mail message when the program exits.\n";
+	print STDERR "    -versions_file:\n",
+                 "         Specify filename that contains TSDIS products' version numbers.  \n",
+                 "         Default = \$GVS_DATA_PATH/products_version_numbers\n";
+	print STDERR "    -not_report_monitorps:\n",
+	             "         Do not send status messages to monitorps.\n";
+	print STDERR "    -wsr88d: Use WSR-88D time gap parameters in rain rate accumulations.\n",
+		     "         Default: radar type (WSR-88D or not) determines time gap parameters.\n";
+#	print STDERR "    -update_inventory_db:\n",
+#	             "         Yes, add information (product, files,...) to the inventory DB.\n",
+#	             "         Inventory info. may be looked up via a GUI program, 'xgvics'.\n";
+#	print STDERR "    -product_processed_num:\n",
+#	             "         Specify the number for reprocesses. Default: 1.\n",
+#	             "         This is used if -update_inventory_db was specified.\n";
+	print STDERR "    product        = 3A-53 | 3A-54 | 3A-55\n";
+	print STDERR "    product_option = ~/data/options, etc...\n";
+
+	&do_exit($SEVERE_ERROR_CODE);
+}
+
+
+sub process_argvs {
+	local(@argvs) = @_;
+
+	do usage() if ($#argvs < 2);
+	$tape_id = shift @argvs;
+	do usage() if ($tape_id =~ /^\-/);
+	while (@argvs) {
+		local($str) = shift @argvs;
+		if ($str =~ /^\-/) {
+			if ($str eq "-i") {
+				$top_input_dir = &change2absolute_dir(shift @argvs);
+				do usage() if ($top_input_dir =~ /^\-/);
+			}
+			elsif ($str eq "-o") {
+				$top_output_dir = &change2absolute_dir(shift @argvs);
+				do usage() if ($top_output_dir =~ /^\-/);
+			}
+			elsif ($str eq "-w") {
+				$top_working_dir_prefix = &change2absolute_dir(shift @argvs);
+				do usage() if ($top_working_dir_prefix =~ /^\-/);
+			}
+			elsif ($str eq "-remove_old_products") {
+				$remove_old_products = 1;
+			}
+			elsif ($str eq "-do_not_send_mail") {
+				$yes_send_mail = 0;
+			}
+			elsif ($str eq "-update_inventory_db") {
+				$update_inventory_db = 1;
+			}
+			elsif ($str eq "-product_processed_num") {
+				local($tmp_str) = shift @argvs;
+				do usage() if ($tmp_str =~ /^\-/);
+				$prod_processed_num = $tmp_str;
+			}
+			elsif ($str eq "-not_report_monitorps") {
+				$not_report_monitorps = 1;
+			}
+			elsif ($str eq "-versions_file") {
+				local($tmp_str) = shift @argvs;
+				do  usage() if ($tmp_str eq "" || $tmp_str =~ /^\-/);
+				# Turn it to absolute path and remove the last '/'.
+				($version_fname = &change2absolute_dir($tmp_str)) =~ s/\/$//;
+			}
+			elsif ($str eq "-wsr88d") {
+				$use_wsr88d_timegap_params = 1;
+			}
+			else {
+				print STDERR "option $str is undefined\n";
+				do usage();
+			}
+			next;
+		}
+
+		$prod = $str;
+
+		local($options_file) = shift @argvs;
+		if ($programs{$prod} eq "") {
+			print STDERR "$this_prog: Error: Product $prod is unknown.\n";
+			&do_exit($SEVERE_ERROR_CODE);
+		}
+
+		if (! (-e $options_file)) {
+			print STDERR "$this_prog: Option file <$options_file> does not exist.\n";
+			&do_exit($SEVERE_ERROR_CODE);
+		}
+		$product_list{$prod} = 1;
+
+		# Create output dir
+		local($prod_output_dir) = $top_output_dir.&get_dir_name($prod, $tape_id); 
+		print STDERR "$this_prog: Creating dir <$prod_output_dir> for $prod\n";
+		do create_dir($prod_output_dir, 1, 0); #uses $remove_old_products 
+
+		push(@selected_prods, $prod);
+		$options_list{$prod} = &get_options_from_file($options_file);
+
+	}
+
+	if ($#selected_prods < 0) {
+		print STDERR "$this_prog: Error: Must specify at least one product.\n";
+		&do_exit($SEVERE_ERROR_CODE);
+	}
+
+} # process_argvs
+
+
+sub create_one_hdf_file {
+	local($prod, $input_dir, *infile_list, $output_dir) = @_;
+	# Process a month worth of data if $prod is either 3A-54 or 3A-55 or a 
+	# 5 day worths of data if $prod is 3A-53 and create an HDF file.
+	# Modify infile_list -- assuming that it contains data from multiple
+	# months. infile_list contains filename(s) having the following format: 
+	#    2A5[3|5].yymmdd.granule#.site.ver#.HDF[.gz|.Z]
+	# $prod = 3A-53 | 3A-54 | 3A-55
+	# Return the number of failure -- 0 if all infiles are successful; 
+	# -1, otherwise.
+
+	local($failed) = 0;
+	return $failed if ($#infile_list < 0);
+	return -1 if ($prod !~ /3A-53/ && $prod !~ /3A-54/ &&
+				 $prod !~ /3A-55/);
+
+	# Construct the intermediate filenames and output filename based on
+	# the first input file from list.
+	# 
+#print STDERR "list: <@infile_list>\n";
+	local($infile) = shift @infile_list;
+	local($mon, $day, $yr, $site);
+	do get_info_from_granule_product_filename($infile, *mon, *day, *yr, *site);
+	local($prod_version_num) = &get_prod_version_num($prod, $out);
+	local($prod_pref);
+	($prod_pref = $prod) =~ s/-//;
+	$prod_pref =~ s/-dc//;
+	local($yr_2digits) = $yr - 1900;
+	$yr_2digits = $yr - 2000 if ($yr >= 2000);
+	$yr_2digits = "0" . $yr_2digits if ($yr_2digits < 10);
+
+	local($hdf_outfile);
+	local($first_inter_file, $second_inter_file, $third_inter_file);
+	local($working_pentad) = &get_pentad_num($mon, $day, $yr);
+	local($fname_date_str);
+
+	# 3A-53 or 3A-54 
+	if ($prod =~ /3A-54/ || $prod =~ /3A-53/) {
+		# Use the date of the first day of the collection period.
+		if ($prod =~ /3A-54/) { # First day of the month
+			$day = "1";
+		}
+		else {
+			# pentad
+			local($tmp_yr) = $yr;
+			do get_start_date_of_pentad($working_pentad, $tmp_yr, *mon, *day, *yr);
+		}
+
+		local($mzero) = "";
+		$mzero = "0" if ($mon =~ /^[0-9]$/);
+		local($dzero) = "";
+		$dzero = "0" if ($day =~ /^[0-9]$/);
+		$fname_date_str = "$yr_2digits$mzero$mon$dzero$day";
+
+		$first_inter_file = $output_dir."$prod_pref.$fname_date_str.$site.$prod_version_num.times.ASCII";
+		$second_inter_file = $output_dir."$prod_pref.$fname_date_str.$site.$prod_version_num.acc_map.ASCII";
+		$third_inter_file = $output_dir."$prod_pref.$fname_date_str.$site.$prod_version_num.admin_info.ASCII";
+		# Determine whether to use WSR-88D or non-WSR-88D time gap
+		# parameters.
+		if ($use_wsr88d_timegap_params || &is_wsr88d($site)) {
+			($max_time_gap, $const_time_gap) = @timegap_wsr88d;
+		}
+		else {
+			($max_time_gap, $const_time_gap) = @timegap_non_wsr88d;
+		}
+	}
+	# 3A-55
+	elsif ($prod =~ /3A-55/) {
+		# Use the date of the first day of the collection period.
+		$day = "1"; # First day of the month
+
+		local($mzero) = "";
+		$mzero = "0" if ($mon =~ /^[0-9]$/);
+		local($dzero) = "";
+		$dzero = "0" if ($day =~ /^[0-9]$/);
+		$fname_date_str = "$yr_2digits$mzero$mon$dzero$day";
+
+		$first_inter_file = $output_dir."$prod_pref.$fname_date_str.$site.$prod_version_num.times.ASCII";
+		$second_inter_file = $output_dir."$prod_pref.$fname_date_str.$site.$prod_version_num.acc_cfad.ASCII";
+		$third_inter_file = $output_dir."$prod_pref.$fname_date_str.$site.$prod_version_num.acc_vprofile.ASCII";
+		($max_time_gap, $const_time_gap) = ()
+
+	}
+	$hdf_outfile = $output_dir."$prod_pref.$fname_date_str.$site.$prod_version_num.HDF";
+
+
+	local($working_day) = $day;
+	local($working_mon) = $mon;
+	local($working_yr) = $yr;
+	local($prev_infile) = $infile;
+	local($period_flag) = "BEGIN";
+	local($rc);
+	while (@infile_list) {
+
+		$infile = shift @infile_list;
+		do get_info_from_granule_product_filename($infile, *mon, *day, *yr, *site);
+#print STDERR "infile : $infile, $mon, $working_mon, $prev_infile\n\n";
+
+		# Check if this infile belongs to the current hdf file.
+		if ($prod =~ /3A-53/) {
+			local($tmp_pentad) = &get_pentad_num($mon, $day, $yr);
+
+			$month_or_pentad_num = $working_pentad;
+			if ($tmp_pentad != $working_pentad) {
+                    # Put back infile-- Not in this pentad
+				unshift(@infile_list, $infile); 
+				last;
+			}
+
+		}
+		else {
+			$month_or_pentad_num = $working_mon;
+			# A month worth of data is wanted.
+			if ($mon != $working_mon || $yr != $working_yr) {
+				# Put back -- next month is reached
+				unshift(@infile_list, $infile); 
+				last;
+			}
+		}
+		$jobnum++;
+		do send_status_msg($jobnum, $programs{$prod}, $input_dir.$prev_infile, 
+						   $stat_array[3]); # running
+		do set_products_status(*products_status, $stat_array[3], ($prod));
+		$curr_fname = $input_dir.$prev_infile;
+		local($cmd) = "$programs{$prod} $options_list{$prod} $input_dir$prev_infile $hdf_outfile $first_inter_file $second_inter_file $third_inter_file $period_flag $working_yr $month_or_pentad_num $max_time_gap $const_time_gap";
+		print STDERR "$this_prog: Executing <$cmd>...\n";
+		$rc = &do_system_call($cmd);
+		$stat_index = 1; # Success
+		$stat_index = 0 if $rc < 1;  # Failed
+		do send_status_msg($jobnum, $programs{$prod}, $input_dir.$prev_infile, 
+						   $stat_array[$stat_index]);
+		do set_products_status(*products_status, $stat_array[$stat_index], ($prod));
+		$curr_fname = "";
+
+		if ($rc < 0) {
+			print  STDERR "$this_prog: Error: Failed to execute <$cmd>\n";
+			$failed++;
+			# continue
+		}
+		$prev_infile = $infile;
+		$period_flag = "MIDDLE" if ($period_flag eq "BEGIN");
+	}
+	$period_flag = "END";
+	$jobnum++;
+	do send_status_msg($jobnum, $programs{$prod}, $input_dir.$prev_infile, 
+					   $stat_array[3]);   # running
+	do set_products_status(*products_status, $stat_array[3], ($prod));
+	$curr_fname = $input_dir.$prev_infile;
+	if ($prod =~ /3A-53/) {
+		$month_or_pentad_num = $working_pentad;
+	}
+	else {
+		$month_or_pentad_num = $working_mon;
+	}
+	local($cmd) = "$programs{$prod} $options_list{$prod} $input_dir$prev_infile $hdf_outfile $first_inter_file $second_inter_file $third_inter_file $period_flag $working_yr $month_or_pentad_num $max_time_gap $const_time_gap";
+		
+	print STDERR "$this_prog: Executing <$cmd>...\n";
+	$rc = &do_system_call($cmd);
+	$stat_index = 1; # Success
+	$stat_index = 0 if $rc < 1;  # Failed
+	do send_status_msg($jobnum, $programs{$prod}, $input_dir.$prev_infile, 
+					   $stat_array[$stat_index]);
+	do set_products_status(*products_status, $stat_array[$stat_index], ($prod));
+	$curr_fname = "";
+
+	if ($rc < 0) {
+		print  STDERR "$this_prog: Error: Failed to execute <$cmd>\n";
+		$failed++;
+	}
+	
+	$rc = &do_system_call("gzip -f $hdf_outfile");
+	if ($rc < 0) {
+		print  STDERR "$this_prog: Warning: Unable to compress $hdf_outfile\n";
+	}
+	return $failed;
+} # create_one_hdf_file 
+
+
+sub do_system_call {
+	local($cmd) = @_;
+	# Returns -1 for failure
+	#         1 for successful
+	return -1 if ($cmd eq "");
+
+	system($cmd);
+	$status = $? >> 8;
+	local($signal) = $? & 255;
+	do doexit_handler($signal) if ($signal != 0);
+	do doexit_handler('INT') if (&interrupted($status));
+	return -1 if (&is_severe_error($status));
+	return 1;
+}
+
+
+sub doexit_handler {
+	local($signal) = @_;
+    # Ignore signals
+	do ignore_catched_signals();
+	local($rc) = $SEVERE_ERROR_CODE;
+	local($stat_index) = 0; # Failed
+	if ($signal eq 'INT' || $signal eq 'KILL' || $signal eq 'STOP' ||
+		$signal == 9 || $signal == 2) {
+		$rc = $INTER_CODE;
+		$stat_index = 5; # interrupted
+	}
+	if ($first_time_exit_handler) {
+		$first_time_exit_handler = 0;
+		print STDERR "$this_prog: Received signal <$signal>\n";
+
+		if ($curr_fname ne "") {
+			do send_status_msg($jobnum, $programs{$prod}, $curr_fname, $stat_array[$stat_index]);
+			do set_products_status(*products_status, $stat_array[$stat_index], ($prod));
+		}
+
+		if ($jobnum > 0) { # finished		
+			do send_status_msg(++$jobnum, $programs{$prod}, "NOFILE", $stat_array[4]);
+			do set_products_status(*products_status, $stat_array[4], ($prod));
+		}
+
+
+		do clean_up();
+	}
+
+	&do_exit($rc);
+}
+
+
+sub get_pentad_num {
+	local($mon, $day, $yr) = @_;
+	local($cmd) = "date2pentad_number $day $mon $yr|";
+	open(PENTAD, $cmd);
+	local($pentad) = <PENTAD>;
+	$pentad =~ s/[\n|\r]//;   # Remove \n or \r
+	return $pentad;
+}
+
+sub get_start_date_of_pentad {
+	local($pentad, $year, *mon, *day, *yr) = @_;
+	# Get the start date of the specified pentad number in $year
+
+	local($cmd) = "pentad_number2begin_date $pentad $year|";
+	open(PENTAD, $cmd) || return;
+	local($str) = <PENTAD>;
+	($mon, $day, $yr) = split(' ', $str);
+	close(PENTAD);
+
+} #get_start_date_for_pentad_period
+
+sub is_wsr88d {
+	local($site) = @_;
+	# Returns 1 if radar is WSR-88D, 0 or null otherwise.
+	if (!$site) {
+	    print STDERR "No site ID given--assume WSR-88D time gap parameters.\n";
+	    return 1;
+	}
+	my $radar_site_info_fname = &get_radar_site_info_fname;
+	my $wsr88d_type = 0;
+	my @site_info;
+
+	if (!open(SITEINFO, $radar_site_info_fname)) {
+	     print STDERR "$this_prog: could not open $radar_site_info_fname\n";
+	     print STDERR "-- will use WSR-88D time gap parameters\n";
+	     return 1;
+	}
+	# Read gv_radar_site_info file, checking first field of each record for
+	# site name match.  If matched, test for WSR-88D radar by checking
+	# second field for string of 4 uppercase letters, which is how WSR-88D
+	# IDs are specified. Non-WSR-88Dčsites will have a character such
+	# as "-" or "?" in this field. If site not found, assume non-WSR-88D.
+	while (<SITEINFO>) {
+		next if ($_ =~ /^#/); # skip comments.
+		chomp;
+		@site_info = split /,/;
+		# if site matched, check for WSR-88D ID (4 uppercase letters).
+		if ($site_info[0] =~ $site) {
+		     $wsr88d_type = $site_info[1] =~ /[A-Z]{4}/;
+		     last;
+		}
+
+	}
+	close(SITEINFO);
+	return $wsr88d_type;
+}
+
+sub clean_up {
+
+
+	if ($update_inventory_db) {
+		# Send info of each file for all products to GV inventory DB.
+		do send_product_info_to_inventory($tape_id, *active_prods_list, *options_list,
+								  $prod_processed_num, *products_status,
+								  "");
+	}
+
+	chdir $save_curr_dir;
+	do do_system_call("rm -rf $top_working_dir") 
+		if ($top_working_dir ne "" && -d $top_working_dir); # 
+	do do_system_call("rm -rf $top_working_dir_prefix2") 
+		if ($top_working_dir_prefix2 ne "" && -d $top_working_dir_prefix2); # 
+
+} #clean_up
+
+

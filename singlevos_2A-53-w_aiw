@@ -1,0 +1,175 @@
+#! /usr/bin/perl
+#-*-Perl-*-
+# SPECIALLY MODIFIED FOR AIW-II.
+#
+# Mods: (7/8/96)
+#  1. Do not explode HDF files.  AIW-II datasets are already UF and ascii.
+#  2. Add HDF to ascii conversion.
+#----------------------------------------------------------------------------
+# This is the user interface to the rain rate algorithm developed by 
+# Witek Krajewski, University of Iowa.
+# This script does the following:
+#   1. Takes 1C-51 product (UF file) and 2A-54 product (1 VOS--HDF file), 
+#   2. Calls the real algorithm to creates an HDF file, containing rain 
+#      rate map.
+#
+# Script returns 0 upon successful completion; non-zero, otherwise.
+#
+# 
+# REQUIREMENTS:
+#   - Specify pathname for the lookup tables if they are not installed under
+#     $GVS_DATA_PATH or '/usr/local/trmm/data'. The lookup tables are: 
+#     carttopol.FL, poltocart.FL  (for MELBOURNE data)
+#     carttopol.DR, poltocart.DR  (for DARWIN data)
+#
+#
+#
+# By:    Thuy Nguyen
+#        NASA/TRMM Office
+#        International Database Systems
+#        Thuy.Nguyen@gsfc.nasa.gov
+#        June 9, 1995
+#
+#############################################################################
+@path = split(/\//, $0);
+$product = $path[$#path];
+
+sub usage {
+	print STDERR "Usage:  $product [-v]\n";
+	print STDERR "\t[-t data_type] \n";
+	print STDERR "\t[-P pathname_of_lookup_tables]\n";
+	print STDERR "\t[-p parameters_file]\n";
+	print STDERR "\tqc_uf_file csmap_ascii_file rrmap_ascii_file\n";
+	exit (-1);
+}
+
+if ($#ARGV < 1){
+	do usage();
+}
+#set default values
+$data_path = $ENV{'GVS_DATA_PATH'};  # default 
+if ($data_path eq "") { # Pick a nice default.
+    $data_path = "/usr/local/trmm/data";
+}							
+
+$tsdistk_path = $ENV{'TSDISTK'};  # default 
+if ($tsdistk_path eq "") { # Pick a nice default.
+    $tsdistk_path = "/usr/local/toolkit_2.5";
+	$ENV{'TSDISTK'} = $tsdistk_path;
+}
+
+$verbose = 0;
+$data_type = "W";  # default to WSR88D (Melbourne data)
+$param_file = "";
+$do_products = 0;
+# process arguments
+$end_options = 0;
+
+while (@ARGV && $end_options == 0) {
+	$str = shift;
+
+	if ($str eq "-v") {
+		$verbose = 1; 
+		$verbose_flag = "-v";
+	}
+	elsif ($str eq "-t") {
+		$data_type = shift;
+	}
+
+	elsif ($str eq "-P") {
+		$data_path = shift;
+	}
+	elsif ($str eq "-p") {
+		$param_file = shift;
+	}
+	else {
+		$end_options = 1;
+	}
+}
+
+if ($#ARGV != 1  || $str =~ /^\-/){
+	do usage();
+}
+
+#extract input filenames
+$qc_uf_file = $str;
+$csmap_hdf_file = shift;
+$rrmap_file = shift;      # outfile
+
+
+if ($data_type eq "W") {# WSR88D (Melbourne data)
+	$TBL_EXT = "FL";
+    # raingages have a 0 minutes time shift from radar for Florida
+	$site = "melb";
+	$radar_id = 20;
+    if ($param_file eq "") {
+		$param_file = "melb_rainest.par";
+	}
+}								
+elsif ($data_type eq "L") {		 # Lassen data
+	$TBL_EXT = "DR";
+	$site = "darw";
+	$radar_id = 20;
+    if ($param_file eq "") {
+		$param_file = "darw_rainest.par";
+	}
+}
+else {
+	print STDERR "$product:ERROR:Only support Melbourne and Lassen data.\n";
+	exit(-1);
+}
+
+$param_file = "$data_path/$param_file";
+if ($verbose == 1) {
+	print STDERR "$product:Which program: $0\n"; 
+	print STDERR "$product:data_type = $data_type\n";
+    print STDERR "$product:data_path = $data_path\n";
+	print STDERR "$product:param_file = $param_file\n";
+	print STDERR "$product:1C-51_product = $qc_uf_file\n";
+	print STDERR "$product:2A-54_product = $csmap_hdf_file\n";
+	print STDERR "$product:2A-53-w_product = $rrmap_file\n";
+}
+
+
+# execute the real program 'rainest'.
+
+
+# call the algorithm
+$prog = "rainest";
+$cmd = "$prog $verbose_flag -P $data_path $param_file $qc_uf_file $rrmap_file";
+if ($verbose){
+	print STDERR "$product:Executing: $cmd\n";
+}
+
+system ("$cmd");
+$stat = $? >> 8;
+unlink($opt_file);
+
+if ($stat != 0) {
+	print STDERR "$product: Error:Failed executing $cmd. Bye.\n";
+	print $stat,"\n";
+	exit (-1);
+}
+### Send the input DZ and CZ images to monitorps.
+# Parse hhmm
+@U = split(/\//,$qc_uf_file);
+$_ = $U[$#U];
+split(/_/);
+$yymmdd = $_[1];
+$hhmm = substr($_[2], 0, 4);
+$jobnum = 1; #???
+$tape = "W950901_950902";
+# 1C-51 ... already sent.
+
+# Convert to ascii, gzip, and delete input hdf; AIW-II only.
+system("2A-53_hdf2ascii $verbose_flag $rrmap_file $rrmap_file" . ".ascii");
+if ($do_products == 1) {
+	system("send_product 2A-53-a $tape $jobnum $yymmdd $hhmm $rrmap_file".".ascii");
+}
+system("gzip -f $rrmap_file" . ".ascii");
+unlink $rrmap_file;
+
+if ($verbose) {
+	print STDERR "$product: Successful.\n";
+}
+exit (0);

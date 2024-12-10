@@ -1,0 +1,358 @@
+#! /usr/bin/perl
+#-*-perl-*-
+#
+#  level_1_singelevos_uf_to_granule_hdf - Bundle UF files from disk to
+#        granule HDF files.
+#     WARNING: Quality Control (QC) will be applied.
+#  
+#
+#  This script will exit with one of the following codes: 
+#        -2 -- ($INTER_CODE) Program was aborted by '^C'.
+#        -1 -- ($SEVERE_ERROR_CODE) When there is failure.
+#         0 -- ($SUCCESS_CODE) Everything is successful.
+#
+#
+#
+#----------------------------------------------------------------------
+#
+# By:
+#       Thuy Nguyen
+#       Science Systems and Applications, Inc. (SSAI)
+#       NASA/TRMM Office
+#       nguyen@trmm.gsfc.nasa.gov
+#       July 18, 1997
+#
+###########################################################################
+#       
+#
+
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'gvs_production_common.pl';
+
+$save_curr_dir = `pwd`;
+chop $save_curr_dir;    # remove \r
+$save_curr_dir = "$save_curr_dir/";
+$ppid = "$$";
+$this_prog_dirname = "l1svosuf_2_ghdf_$ppid/";
+
+
+# Set default
+$device = "disk";
+$tapeid = "unknown";
+$input_dir = $save_curr_dir;
+$input_list = ($input_dir);
+
+$top_output_dir = $save_curr_dir;
+$top_tmp_dir_suffix = "tmp/";
+$top_tmp_dir_prefix = "$save_curr_dir$this_prog_dirname";
+$top_tmp_dir =  "$top_tmp_dir_prefix$top_tmp_dir_suffix";
+
+$max_num_infiles_per_hour =  20;   # This will be used to determine if
+                                     # the products can be compressed.
+$yes_compress_products = 1;          # Yes, compress granuled HDF.
+@prog_options = ();
+$dir_1C = "";
+$dir_1B = "";
+$not_report_monitorps = 0;  # Default: yes, send to monitorps.
+
+# Process args.
+do process_argvs(@ARGV);
+$send_status_prog = "send_status"; # send status to monitorps
+$send_status_prog = "echo" if ($not_report_monitorps == 1); # 
+do do_system_call("mkdir -p $top_tmp_dir", "") 
+	if ($top_tmp_dir ne "" && !(-d $top_tmp_dir));
+
+$jobnum = 0;
+# Run program for each UF file from input_list or from each 
+# dir from input_list.
+# Note: input_list may contain a combination of file and dir.
+while (@input_list) {
+	local($input_file_or_dir) = shift @input_list;
+
+	if (-f $input_file_or_dir) {
+		# Entry is a file.
+		$jobnum++;
+		# Run program.
+		do run_program($program, $jobnum, $input_file_or_dir, @prog_options);
+		next;
+	}
+	elsif (!(-d $input_file_or_dir)) {
+		print STDERR "$this_program: Warning: $input_file_or_dir doesnot exist. Ignore.\n";
+		next;
+	}
+	# Entry in list is a directory name.
+    # Open it and read only the UF files there.
+    # UF filenames: *.uf[.gz|.Z].
+	# For each UF file, run program.
+	local($input_dir) = $input_file_or_dir;
+	opendir(INPUT_DIR, $input_dir) || (do clean_up() && exit($SEVERE_ERROR_CODE));
+    # Only process data files ending with .uf[.gz|.Z]
+	
+	local(@uf_file_list) = grep(/uf/, readdir(INPUT_DIR));
+	closedir(INPUT_DIR);
+	
+    # Sort file list
+	@uf_file_list = sort @uf_file_list;
+	while (@uf_file_list) {
+		local($uf_file) = shift @uf_file_list;
+		
+		# Skip if filename doesn't end with .uf, .uf.gz, or .uf.Z
+		next if (!($uf_file =~ /(\.uf$)|(\.uf\.gz$)|(\.uf\.Z$)/));
+	    $uf_file = "$input_dir/$uf_file";
+	    chop $uf_file if $uf_file =~ /(\r)|(\n)/;  # Remove newline if any
+	    # Skip if file has zero size						  
+	    next if -z $uf_file;							  
+	    $jobnum++;
+
+	    do run_program($program, $jobnum, $uf_file, @prog_options);
+	} # while uf file list
+
+} # while input_list
+
+# Compress all uncompressed HDF files.
+if ($yes_compress_products == 1) {
+    &compress_product($dir_1C, 1, $max_num_infiles_per_hour, 
+					  $top_tmp_dir, $L1_1C51) if $dir_1C ne "";
+	&compress_product($dir_1B, 1, $max_num_infiles_per_hour, 
+					  $top_tmp_dir, $L1_1B51) if $dir_1B ne "";
+}
+
+do clean_up();
+exit($SUCCESS_CODE);
+
+############################### Routines ###################################
+
+sub usage {
+	print STDERR "Bundle Level 1 UF Files To Granule HDF Files.\n";
+	print STDERR "Usage ($PROG_VERSION)\n";
+	print STDERR "    $this_prog [-tapeid tape_label]  [-not_report_monitorps]\n",
+	             "               [-i {input_dir_list|input_file_list} EOI] [-o output_dir]\n",
+                 "               [-max_num_infiles_per_hour number]\n",
+	             "               [-not_compress_outfiles] program [program_options]\n";
+	print STDERR "        where, \n",
+	             "           -tapeid: Specify tape label, i.e., kmlb001. This is used \n",
+                 "                    for production monitoring. Default: unknown.\n",
+                 "           -not_report_monitorps:\n",
+	             "                    Do not send status messages to monitorps.\n",
+	             "           -i:      Specify a list of directories of UF files (*.uf[.gz|.Z])\n",
+                 "                    or UF filenames ended with 'EOI'. It can be a combination of both.\n",
+                 "                    Entries are separated by space. \n",
+                 "                    Default: './ EOI'.\n",
+	             "           -o:      Specify output directory for products. \n",
+                 "                    Options, -b & -c, will overwrite this option. Default: './'.\n",
+                 "           -max_num_infiles_per_hour: \n",
+	             "                    Specify the max. number of input files in the same hour.\n",
+	             "                    This is used only to determine when to compress products.\n",
+                 "                    Default: 20.\n",
+                 "           -not_compress_outfiles:\n",
+	             "                    Do not compress the products. \n",
+	             "        program:         level_1 \n",
+	             "        program_options: Options for program.\n",
+	             "\n",
+	             "    WARNING: QC processing will be applied.\n\n";
+
+
+
+	exit($SEVERE_ERROR_CODE);
+}
+
+
+sub process_argvs {
+	local(@argv_list) = @_;
+
+    do usage() if ($#argv_list < 2);
+	local($is_input) = 0;
+	# Get this program's options 
+	while ($#argv_list > 0) {
+		
+		$str = shift @argv_list;
+		if ($str eq "-tapeid") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$tapeid = $tmp_str;
+		}
+		elsif ($str eq "-i") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$is_input = 1;
+			push(@input_list, $tmp_str);
+		}
+		elsif ($str eq "-o") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			
+			$top_output_dir = &change2absolute_dir($tmp_str);
+		}
+		elsif ($str eq "-not_report_monitorps") {
+			$not_report_monitorps = 1;
+		}
+		elsif ($str eq "-max_num_infiles_per_hour") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$max_num_infiles_per_hour = $tmp_str;
+		}
+		elsif ($str eq "-not_compress") {
+			$yes_compress_products = 0;
+		}
+		else {
+			if ($is_input) {
+				do usage() if ($str =~ /^\-/);
+				if ($str eq "EOI") {
+					$is_input = 0;
+				}
+				else {
+					push(@input_list, $str);
+				}
+			}
+			else {
+				# put string back
+				unshift(@argv_list, $str);
+				last;
+			}
+		}
+	}
+	$program = shift @argv_list;
+	do usage() if ($program eq "" || $program =~ /^\-/);
+	@prog_options = @argv_list;  # Options for $program
+
+	local($no_1C, $no_1B) = 0;
+	do extract_level1_dirs_from_options(*dir_1C, *dir_1B, *dir_1C_UF,"", 
+										*no_1C, *no_1B, @prog_options);
+	if ($dir_1C eq "" && $no_1C == 0) {
+		$dir_1C = $top_output_dir;
+		push(@prog_options, "-c", $dir_1C);
+	}
+	if ($dir_1B eq "" && $no_1B == 0) {
+		$dir_1B = $top_output_dir;
+		push(@prog_options, "-b", $dir_1B);
+	}
+
+	do do_system_call("mkdir -p $dir_1C", "") if ($dir_1C ne "" && !(-d $dir_1C));
+	do do_system_call("mkdir -p $dir_1B", "") if ($dir_1B ne "" && !(-d $dir_1B));
+} # process_argvs
+
+sub run_program {
+	local($prog, $jobnum, $infile, @options) = @_;
+	# Send status msg to monitorps, execute program, and send status msg to
+    # monitorps again.  It will compress product(s) if applicable.
+	# Return 1 for successful; -1, otherwise.
+
+	do send_job_status($prog, $jobnum, $infile, "running");
+
+	$save_program = $prog;
+	$save_jobnum = $jobnum;
+	$save_infile = $infile;
+	local($cmd) = "$prog @options $infile";
+	print STDERR "$cmd\n";
+	local($rc) = &do_system_call($cmd, $infile);
+	# 
+	# Did the program have any errors?
+	# 
+	do send_job_status($prog, $jobnum, $infile, $rc+1);
+	$save_program = "";
+	$save_jobnum = "";
+	$save_infile = "";
+
+	if ($rc != -1) {
+		if ($yes_compress_products == 1) {
+			&compress_product($dir_1C, 0, $max_num_infiles_per_hour, 
+							  $top_tmp_dir, $L1_1C51) if $dir_1C ne "";
+			&compress_product($dir_1B, 0, $max_num_infiles_per_hour, 
+							  $top_tmp_dir, $L1_1B51) if $dir_1B ne "";
+		}
+	}
+
+}
+
+sub send_job_status {
+	local($program, $jobnum, $infile, $stat) = @_;
+	# stat can either be status string or index to stat_array.
+
+	return if ($program eq "" || $jobnum eq "" || $infile eq "");
+	local($i) = -1;
+	for ($i = 0; $i < 7; $i++) {
+		last if ($stat eq $stat_array[$i]);
+	}
+
+	$i = $stat if ($i < 0 || $i >= 7);
+
+	if ($infile ne "") {
+		local($send_cmd) = "$send_status_prog -e $jobnum $tapeid $device $program $infile $stat_array[$i]";
+		system($send_cmd);
+		local($status) = $? >> 8;
+		local($signal) = $? & 255;
+		do doexit_handler($signal) 
+			if ($signal eq 'INT' || $signal eq 'KILL' || $signal eq 'STOP' ||
+				$signal == 9 || $signal == 2);
+		
+		do doexit_handler('INT') if (&interrupted($status));
+
+	}
+
+}
+
+
+sub clean_up {
+	# Remove working and tmp dirs.
+	system("rm -rf $top_tmp_dir_prefix") if (-d $top_tmp_dir_prefix);
+}
+
+sub do_system_call {
+	local($cmd, $infile) = @_;
+	# Return 0 for successful,
+	#        -1 for failure,
+	#        5 for interrupted.
+
+#print STDERR "executing: $cmd\n";
+	system($cmd);
+	$status = $? >> 8;
+	local($signal) = $? & 255;
+	local($rc) = 0;
+
+	do doexit_handler($signal) if ($signal != 0);
+	if (&interrupted($status)) {
+		$rc = 5;
+		do send_job_status($save_program, $save_jobnum, $save_infile, $rc);
+		$save_infile = "";
+		do doexit_handler('INT');
+	}
+	if (&is_severe_error($status)) {
+		print STDERR "$this_prog: Failed executing: $cmd\n";
+		$rc = -1; # failed
+	}
+	elsif (&is_minor_error($status)) {
+		print STDERR "$this_prog: Warning: No product produced due to anomolous condition.\n";
+		$rc = 0;    # For now, treat this case as successful.
+	}
+	return $rc;
+
+}
+
+sub doexit_handler {
+	local($signal) = @_;
+
+    # Ignore signals
+	do ignore_catched_signals();
+
+	local($exit_code) = $SEVERE_ERROR_CODE;
+
+	print STDERR "$this_prog: Got signal <$signal>. Abort execution. Time = ".time."\n";
+	$rc = 0;
+	$rc = 5 if ($signal eq 'INT' || $signal eq 'KILL' || $signal eq 'STOP');
+
+	system("$send_status_prog -e $save_jobnum $tapeid $device $save_program $save_infile $stat_array[$rc]") if $save_infile ne "";
+
+	system("$send_status_prog -e $save_jobnum $tapeid $device $save_program NOFILE finished");
+		
+	do clean_up("", 0);
+	setpgrp();     # Set process group.
+	kill $signal, 0;    # Kill process group.
+	while (wait != -1) {;}
+
+
+	$exit_code = $INTER_CODE if $rc == 5;
+	exit($exit_code);
+}
+
+
+

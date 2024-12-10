@@ -1,0 +1,188 @@
+v3.21 (1/07/2008)
+
+README for gvs_production package.
+
+This package contains production scheduling programs for the Ground 
+Validation Software(GVS).  It provides programs for processing data for 
+the AIW-II workshop, programs for processing a whole tape, and programs 
+for processing a whole CD.
+
+The programs which are specific for the AIW-II processing are:
+-------------------------------------------------------------
+
+  * level2_darwin.csh - 
+        Run level 2 (for Darwin data set) for the AIW-II workshop.
+
+  * level2_melbourne.csh - 
+        Run level 2 (for Melbourn data set) for the AIW-II workshop.
+
+  Notes:  The above two scripts set up the options lists for proper
+          execution, as instruction by the PI's, of 2A-53-d 
+          (Danny Rosenfeld's), 2A-53-w (Witek Krajewski), and 2A-55 
+          (University of Washington), then call 'aiwII_level2' (a special 
+          version of all_tape_level_1n2).
+
+  * aiwII_level2 - 
+       Run GVS 3.* level 2 for the AIW-II workshop.
+
+  * singlevos_2A-53-d_aiw - 
+       Executes 2A-53-d at a single VOS level for AIW.	Produces a compressed 
+       ascii file.
+
+  * singlevos_2A-53-w_aiw -
+       Executes 2A-53-w at a single VOS level for AIW.  Produces a compressed 
+       ascii file.
+
+  * singlevos_2A-55_aiw - 
+       Executes 2A-55 at a single VOS level for AIW.  Produces a compressed 
+       HDF file.
+
+
+The programs for processing a whole tape are:
+--------------------------------------------
+  * all_tape_level_1 - 
+       Processes a whole tape (Any data set recognized by level_1, i.e., KMLB,
+       LASSEN, UF,...)
+	   for level_1 (1C-51 and/or 1B-51).  This script can read data either 
+       from disk, CD, or from tape.	
+
+  * all_tape_level_1n2 -
+       Runs GVS's level I and/or level II products for a
+	   whole tape.  This script can read data either from disk, CD, or 
+       from tape since it calls 'all_tape_level_1'.	
+
+  * level_3 - 
+       Runs GVS's level III products for a whole tape.  This script reads 
+       data from disk.
+
+  * all_tape_level_2A-52 -
+       Runs GVS's 2A-52 product for a whole tape.  This script reads data 
+       from disk.
+
+
+The program(s) for processing a whole CD are:
+--------------------------------------------
+  * all_cd - 
+       Process a whole CD of WSR-88D and LASSEN data. It will call
+       'all_tapes' which will then call 'all_tape_level_1n2'.
+
+            
+The program(s) for processing a whole month of data are:
+-------------------------------------------------------
+  * monthly_2A-52 -
+       Process 2A-52 product for a monthly data set.
+
+
+The programs for coverting HDF file (granuled or single VOS) to image file(s)
+  are:
+----------------------------------------------------------------------------
+  * hdf2img_for_dir -
+       Convert HDF file(s) in a directory to GIF for 1B-51 and 1C-51 and 
+       to PGM for 2A-53, 2A-54, 3A-53, and 3A-54.
+
+  * hdf2img -
+       Convert HDF file to GIF for 1B-51 and 1C-51 and to PGM for 2A-53,
+       2A-54, 3A-53, and 3A-54.
+
+
+The program for bundling 1C-51 UF files to granule HDF files is:
+---------------------------------------------------------------
+  * level_1_singlevos_uf_to_granule_hdf -
+      Combine 1C-51 UF files from disk to granule HDF files.
+      QC processing will be applied.
+
+
+REQUIREMENTS:
+-------------
+1.  The required libraries and software are:
+
+   **
+   ** Note:  This package is compatible with the current and future versions
+   **        of the software below unless specified otherwise.
+
+    -  any_to_gif in rsl-v1.18.tgz (examples) -- (required by 'hdf2img*'),
+        gvs-v4.13.tgz -- (required by 'all_tape*',
+	    gv_utils-v1.11.tgz,
+	    gvs_tools-v1.2.tgz ('csmap_to_pgm' and 'rrmap_to_pgm' to run 'hdf2img*') 
+        -- Obtain via anonymous ftp to trmm.gsfc.nasa.gov
+         in pub/software or
+         http://trmm.gsfc.nasa.gov/trmm_office/index.html
+         (These are required to run the production and convert HDF files to 
+          images only; they are not required for building and installing 
+          this package.
+
+   - monitorps (optional) -- This is only needed if you want to record and
+         monitor status messages of the running production.
+	
+
+2. The required GNU package(s) are available via ftp to ftp.uu.net.
+   The package(s) are:
+
+	perl -- Version 5.003 or later
+	gzip, gunzip
+
+3. Platform:  HP, SGI, or Linux
+
+
+
+INSTALLATION INSTRUCTIONS:
+-------------------------
+1. configure
+
+2. make install
+
+3. Add the directories of the executable files (See a) to your search path.
+
+4. Set shell environment variable, GVS_DATA_PATH, to where gvs' data files
+   are installed.
+
+
+
+            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+(a) The directories which you have installed the executable files for 
+     this package and 'gvs' package should be in your search path.
+
+
+
+EXECUTION NOTES:
+----------------
+
+Processing data for the AIW-II workshop:
+
+1. Read 'AIW-II_instructions.txt' for instructions on how to produce data 
+   for the AIW-II workshop.
+
+2. Edit 'level2_darwin.csh' and 'level2_melbourne.csh'. Modify the 
+   environment variables appropriately according to your installations of
+   the required libraries and software.
+
+
+Process a whole tape for level 1, 2, and/or 3 (excluding 2A-56, 2A-57):
+
+1. Read 'gvs_production_index.html' via mosaic or netscape for instructions 
+   on how to run the production for a whole tape, residing on tape, disk, 
+   or CD.
+
+Process a month worth of data:
+
+1. monthly_2A-52.html: Documentation for producing 2A-52 product.
+
+
+
+AUTHORS:
+-------
+* John H. Merritt, Space Applications Corporation, NASA/GSFC/TRMM Office
+* Ngoc-Thuy Nguyen, Science Systems and Applications Inc., NASA/GSFC/TRMM Office
+
+
+QUESTIONS:
+----------
+
+Please contact TRMM Office help at help@radar.gsfc.nasa.gov.
+
+
+
+
+

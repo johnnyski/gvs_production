@@ -1,0 +1,262 @@
+#! /usr/bin/perl
+#-*-Perl-*-
+#
+# This script is the front end of Matthias Steiner's algorithm program,
+# '2A55'.  It produces 2A-55 product in HDF.  The HDF file format
+# is specified in ICS Volume 4 (A TSDIS document).  The HDF file includes
+# the three-Dementional reflectivity (Cube), Vertical profile,
+# and CFAD's.  
+#
+# This script takes in 1C-51 product (in Universal Format) with options, if
+# any.  It calls 'uf2mudras' to interpolate the entire volume and calls
+# '2A-54_hdf2ascii' to convert csmap hdf file to ascii file before it 
+# executes '2A55'.
+#
+# Note: if 2A-55_product_prefix includes path, then output_dir will not be used
+#
+# It returns 0 upon successful completion; non-zero, otherwise.
+#
+# Requirement:
+#   - Have access to 'sprint', '2A55', '2A-54_hdf2ascii', and 'uf2mudras'.
+#
+#   - Have sprint input template, 'sprint_entire_volume.inp', installed under 
+#     $GVS_DATA_PATH if you  don't want to specify '-s sprint_input_template'.
+#
+#   - Install the provided data files from './data' in $GVS_DATA_PATH or
+#     specify a different data pathname using option -p
+#
+#   Note: If $GVS_DATA_PATH = "", it is set to '/usr/local/trmm/data'.
+#
+# See 2A-55.html via netscape or Mosaic for more information.
+#
+#
+# By:    Thuy Nguyen
+#        NASA/TRMM Office
+#        International Database Systems
+#        Thuy.Nguyen@gsfc.nasa.gov
+#        January 31, 1996
+#
+###########################################################################
+@path = split(/\//, $0);
+$product =   $path[$#path];
+
+sub usage {
+	print STDERR "Usage: $product \n";
+	print STDERR "\t[-v] \n";
+	print STDERR "\t[-t data_type] \n\t[-s sprint_cmd_script]\n ";
+	print STDERR "\t[-d YYMMDD] \n";
+	print STDERR "\t[-l result_log_file]\n";
+	print STDERR "\t[-p data_path]\n";
+	print STDERR "\t[-D output_dir]\n";
+	print STDERR "\t[-M save_mudras_fname]\n";
+	print STDERR "\tuffile csmap_ascii_file output_shdf\n";
+
+ 	exit (-1);
+}
+
+if ($#ARGV < 2) {
+	do usage();
+}
+# set default values 
+$verbose = 0;
+$output_dir = "./";
+$options_end = 0;
+$result_log = 0;
+$data_type = "W"; # default to W - WSR88D (MELBOURNE)
+                  #            L - Lassen (Darwin)
+$sprint_options = "";
+$date_str = "";
+$keep_mudras_file = 0;
+$do_products = 0;
+
+# default datapath is $GVS_DATA_PATH
+$data_path = $ENV{'GVS_DATA_PATH'};
+if ($data_path eq "") { # Pick a nice default.
+    $data_path = "/usr/local/trmm/data";
+	$ENV{'GVS_DATA_PATH'} = $data_path;
+}							# 
+
+# default TSDISTK is /usr/local/toolkit_2.5
+$tsdistk_path = $ENV{'TSDISTK'};
+if ($tsdistk_path eq "") { # Pick a nice default.
+    $tsdistk_path = "/usr/local/toolkit_2.5";
+	$ENV{'TSDISTK'} = $tsdistk_path;
+}
+
+$sprint_input = "$data_path/sprint_entire_volume.inp";
+
+# process arguments
+while (@ARGV && $options_end == 0) {
+	$str = shift @ARGV;
+	if ($str eq "-t") {
+		$data_type = shift;
+		if ($data_type =~ /^\-/) {
+			do usage();
+		}
+		$sprint_options = $sprint_options." -t ".$data_type;
+	}
+	elsif ($str eq "-l") {
+		$result_log_file = shift;
+		if ($result_log_file =~ /^\-/) {
+			do usage();
+		}
+		$result_log = 1;
+	}
+	elsif ($str eq "-v") {
+		$verbose = 1;
+		$sprint_options = $sprint_options." -v";
+	}
+	elsif ($str eq "-s") {
+		$str = shift;
+		if ($str =~ /^\-/) {
+			do usage();
+		}
+		$sprint_input = $str;
+	}
+	elsif ($str eq "-D") {
+		$output_dir = shift;
+		if ($output_dir =~ /^\-/) {
+			do usage();
+		}
+	}
+	elsif ($str eq "-p") {
+		$data_path = shift;
+		if ($data_path =~ /^\-/) {
+			do usage();
+		}
+	}
+	elsif ($str eq "-M") {
+		$keep_mudras_fname = shift;
+		if ($keep_mudras_fname =~ /^\-/) {
+			do usage();
+		}
+		$keep_mudras_file = 1;
+	}
+	elsif ($str eq "-d") {
+		$date_str = shift;
+		if ($date_str =~ /^\-/) {
+			do usage();
+		}
+		($yr, $mon, $day) = $date_str =~ /(\d\d)(\d\d)(\d\d)/;	
+		if ($mon eq "") {
+			do usage();
+		}
+		$sprint_options = "$sprint_options -d $yr$mon$day";	# 
+	}
+	
+	else {
+		$options_end = 1;
+	}
+}
+
+if ($#ARGV < 1 || $#ARGV > 1 || $str =~ /^\-/) {
+	do usage();
+}
+# extract input filename
+$uf_file = $str;  # 1C-51 product
+$csmap_file = shift;  # 2A-54 product
+$out_hdf    = shift;  # Output HDF filename name.
+$out_hdf    = $output_dir. "/" . $out_hdf if ($out_hdf !~ /^[\/]/);
+$sprint_options = $sprint_options." -s ".$sprint_input;
+
+if ($data_type eq "L") {  # Darwin
+	$site = "ber";
+	$threshold_file = "$data_path/darw.thresholds.bin";
+	$geo_mask_file = "$data_path/darw_landsea_new.map.bin";
+}
+elsif ($data_type eq "W") {  # Melbourne
+	$site = "mel";
+	$threshold_file = "-";
+	$geo_mask_file = "$data_path/melb_landsea_new.map.bin";
+}
+else {
+	print STDERR "$product: ERROR: Recognize only Lassen and WSR-88D data.\n";
+	exit(-1);
+}
+
+
+if ($verbose == 1) {
+	if ($result_log == 1) {
+		print STDERR "$product: result_log_file = $result_log_file\n";
+	}
+	print STDERR "$product: which program: $0\n"; 
+	print STDERR "$product: output_dir = $output_dir\n";
+	print STDERR "$product: data_type = $data_type\n";
+	print STDERR "$product: data_path = $data_path\n";
+}
+
+# interpolate infile (UF file) into MUDRAS file
+
+$MUD_file = "mudras.pure";
+
+$cmd = "uf2mudras $sprint_options $uf_file $MUD_file";
+if ($verbose == 1) {
+	print STDERR "$product: Executing: $cmd\n";
+}
+system ($cmd);
+$stat = $? >>8; # get exit code
+if ($stat == -1) {
+	if ($verbose == 1) {
+		print STDERR "$product: ERROR: Failed executing 'uf2mudras'. \n";
+		exit(-1);
+	}
+}
+elsif ($stat == 1) {
+	print STDERR "$product: WARNING: No product created.\n";
+	exit(1);
+}
+
+# link to csmap.
+$prog = "ln -f";
+$csmap_ascii_file = "csmap.ascii.tmp";
+$cmd = "$prog $csmap_file $csmap_ascii_file";
+if ($verbose == 1) {
+	print STDERR "$product: Executing $prog ...\n";
+}
+system($cmd);
+$stat = $? >> 8;								# 
+if ($stat != 0) {
+	print STDERR "$product: ERROR: Failed executing $prog. Bye.\n";
+	exit(-1);
+}
+
+#
+# call the actual program
+$prog = "2A55";
+$cmd = "$prog $MUD_file $threshold_file $csmap_ascii_file $geo_mask_file $site $out_hdf";
+
+if ($verbose) {
+	print STDERR "$product: Executing: $cmd\n";
+}
+system ($cmd);
+
+$stat = $? >> 8; # get exit code
+
+# gzip the output HDF file -- huge disk space savings.
+system("gzip -f $out_hdf");
+
+# remove csmap ascii file
+system("rm $csmap_ascii_file");
+if ($keep_mudras_file == 0) {
+	system("rm $MUD_file");
+} 
+else {
+	system("mv $MUD_file $output_dir/$keep_mudras_fname");
+}
+
+if ($stat != 0) {
+		print STDERR "$product: ERROR: Failed executing $prog. Bye.\n";
+		exit(-1);
+}
+
+if ($result_log == 0) {
+		unlink "logfile";
+}
+else {
+	system("mv logfile $result_log_file");
+}
+
+if ($verbose) {
+	print STDERR "$product: Successful!\n";
+}
+exit(0);

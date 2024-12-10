@@ -1,0 +1,2499 @@
+#! /usr/bin/perl
+#-*-Perl-*-
+#-------------------------------------------------------------------
+# Usage: all_tape device tapeid  [-n] [-not_compress] [-leave_raw_data_on_disk]
+#      [-i input_dir] [-o top_output_dir ] [-w working_dir]
+#      [-max_vos_per_hour number]
+#      [-not_report_monitorps]
+#      [-update_inventory_db [-product_processed_num] ]
+#      [-start_infile                   { filename | file_sequential_num }] 
+#      [-last_infile                    { filename | file_sequential_num }]
+#      [-alternative_working_dirs_file    filename]
+#      [-alternative_top_output_dirs_file filename]
+#      [-t top_tmp_dir ] 
+#      [-tape_has_no_header_file | -header_file_number number] 
+#      [-first_data_file_number number]
+#      program [options]
+#
+#
+# Example:
+#     all_tape_level_1 /dev/8mm1 N00312 level_1 -v -c 1C-51 -b 1B-51
+#-------------------------------------------------------------------
+#
+# Executes a program once for each single VOS file.
+#
+# Note:
+# This script can handle Melbourne, Kwajelein, Darwin, and other data sets.
+# For production flow processing, this script treats other (unknown) data 
+# set like Melbourne data set.  For product processing, the actual program 
+# 'level_1' will determine the data's site.
+# 
+# Note that staging is only required if data is from tape.
+#
+# This is specific for Melbourne processing in the following way, and
+# for level 1 processing (running level_1):
+#   1. Keeps the first file of the tape on disk.  The file
+#      is called 'tape_id_file.000', where 'tape_id' is the physical
+#      label (NEX002 or whatever).
+#
+#   2. Processes files 2 through EOT.
+#
+# For Darwin and KWAJ we merely inspect the first file on the tape, ensuring
+# that it is Darwin or KWAJ.  Then, stage via 'dd' and 'tar'.
+#
+# In each case: Melbourne, KWAJ, or Darwin.  Process files 2 through EOT.
+#
+# Additional commands needed (not required): send_status
+#
+# 'send_status' sends messages to a special deamon process 'monitorps' that
+# can log job status information.  Failure to have 'send_status' is not
+# harmful, but, a warning message is printed to stderr.
+#
+# NOTE: Staging data to disk must be done via 'dd' and the output may not
+#       be a pipe to tar.  The reason is that not all end of file marks
+#       are ingested.  However, using 'dd' first then using 'tar' works.
+#       In other words,
+#          dd if=/dev/8mm1 bs=32k | tar xf
+#       can fail when,
+#          dd if=/dev/8mm1 bs=32k of=file.1
+#          tar xf file.1
+#       works.  This behavior has been noticed on HPUX 9.*.
+#
+# NOTES: 
+#    1. This script can read data either from disk, CD, or tape.
+#       When reading data from disk, this program assumes data files are 
+#       named $tape_id.#[.gz|.Z] or *.uf[.gz|.Z], where '#' 
+#       is a sequential number starting from 0.  
+#
+#       Note that SEQUENTIAL NUMBER may either be a 3-digit or 4-digit number.
+#
+#       When reading data from disk, data files should be named 
+#       tape_id.#[.gz|.Z], where '#' is a sequential number 
+#       starting from 0.  Darwin data files are tarred files.
+#
+#       When reading data form CD, the input directory for KWAJ and Melbourne 
+#       data should 
+#       contain files named tape_id.#[.gz|.Z], where '#' is a sequential
+#       number starting from 0; the input directory for Darwin data should
+#       contain a tape header file named tape_id.000 and data files named 
+#       *.vol[.gz|.Z], where '#' is a CD's sequential number
+#
+#    2. This script will exit with one of the following codes: 
+#                   -2 -- ($INTER_CODE) Program was aborted by '^C'.
+#                   -1 -- ($SEVERE_ERROR_CODE) When there is failure.
+#                    0 -- ($SUCCESS_CODE) Everything is successful.
+#                    2 -- ($OUT_OF_SPACE_CODE)There is not enough space to continue.
+#
+#
+#    3. Check to see if level I product is a granule HDF file then compress it
+#       as it is being produced.
+#
+#    4. Estimate the required disk space to run the next file. This program
+#       will stop and will send the user an email message indicating which file
+#       the program stopped at.  This information will be used to resume
+#       the production. 
+#
+#    5. Program is able to skip input files and start executing with 
+#       the user's specified start file. 
+#
+#    6. This program will call 'send_status' and 'mail'.
+#
+#    7. Use options '[-alternative_working_dirs_file filename]' and
+#       '[-alternative_top_output_dirs_file filename]' if you want  
+#       this script to continue processing using an alternative file
+#       system when the file system of the working dir or of the top 
+#       output dir is full. If no alternative directory is available or
+#       specified, this script will stop processing.
+#
+#    8. By default, the temporary files created by this script 
+#       will locate in '/tmp'.
+#
+#    9. See 'all_tape.html' for more documentation.
+#
+#   10. This script accepts either UF data set or raw radar data set.
+#
+#   11. With Berrimah data set either from tape or from disk, it contains 
+#       no header file and an empty file between data files.
+#
+#   12. With Berrimah data set from CD, the header file should contain 
+#       "Berrimah".
+#
+#-------------------------------------------------------------------
+##
+# By: John H. Merritt
+#     SM&A Corp.
+#     john.h.merritt@gsfc.nasa.gov
+#     Copyright 1995-1998
+#-------------------------------------------------------------------
+#####################################################################
+#
+# This script processes a whole MELBOURNE, KWAJ, Darwin, or other data sets 
+# (usually one tape) and cleans up all staged files.
+# Replace the Melbourne_image line to suit your application.
+# It stages the next tape file while processing the current disk file.
+#
+#
+# The 'send_status' is a perl program to communicate with a locally
+# run deamon process that logs the current status of execution.
+# Typical status messages are: running, successful, failed, warning, aborted,
+# and finished.  The program may do nothing, if so installed.  These
+# status messages are not required for proper exectution of this program and
+# are provided solely for logging information.
+#
+
+$testing = 0;
+$test_c = 0;
+unshift (@INC, ".", "/usr/local/trmm/GVBOX/bin");
+do 'all_tape_common.pl';
+$SIG{'USR1'} = 'do_out_of_space_handler';
+
+# Set default values
+$verbose = 0;
+$tape_has_no_header_file = 0;
+$header_file_num = 0;
+$first_data_file_num = 1;
+$disk = "disk";
+$cd = "CD";
+$send_email = 1;
+$prod_processed_num = 1;  # Default.  Number of time this product is being 
+                          # processed--or num of reprocessed.
+
+@save_prog_cmd = @ARGV;   # This will be used to notify user.
+$ppid = "$$";
+$this_prog_dirname = "alltapel1_$ppid/";
+
+$top_working_dir_prefix = $save_curr_dir;
+# $top_working_dir_prefix2 should be the most top dir. where 
+# working, tmp dirs are under.
+# 
+$top_working_dir_prefix2 = "$top_working_dir_prefix$this_prog_dirname";
+$top_working_dir_suffix = $this_prog_dirname."working/";
+$top_working_dir = "";
+
+
+# Create tmp dir
+$top_tmp_dir_prefix = "/tmp/";
+$top_tmp_dir_suffix = $this_prog_dirname;
+$top_tmp_dir = "";
+
+$input_dir = "";
+$top_output_dir =  $save_curr_dir;
+$alter_working_dirs_fname = "";
+$alter_top_output_dirs = "";
+
+
+# If any $dir_1* is "", then we assume that the program will not produce 
+# any output for it.
+$dir_1C_UF = "";
+$dir_1C  = "";
+$dir_1B  = "";
+$gif_image_dir = "";
+$start_infile = "";     # Filename of the start file to be processed.
+$last_infile = "";      # Filename of the last file to be processed.
+$last_infile_nopath = "";
+$untarred_files_dir = "";
+$n =  0;
+$num_errors = 0;
+$jobnum = 0;
+$pid = -1;
+$tarred_file_start_fname = "";
+$no_1C = 0;       # Default: will produce 1C
+$no_1B = 0;       # Default: will produce 1B
+
+
+# Type of files on tape or other devices
+$UNTARRED_FILE = "untarred file";    
+$TARRED_FILE = "tarred file";    
+$tape_file_type = "";         #
+@options = ();
+$uf_tape = 0; # Default: raw radar data.
+$yes_compress_products = 1;  # Default, compress products as they become
+                            # full-granule files. Compression works correctly 
+                            # only if the input files are coming in the right
+                            # timely order (data time, not file time stamp).
+
+$max_num_raw_files_per_hour = 20;   # This will be used to determine if
+                            # the products can be compressed.
+# Save options in a tmp file.  This file will be read by a child process.
+# This file may be modified by a child process.
+$options_tmp_fname = "";
+
+@save_alter_top_working_dirs = ();
+$previous_untarred_file_count = 0;
+$min_required_dkspace = 0;
+# Remove tape raw data from disk when exit (default). This flag
+# only applies to data reading from tape.
+$remove_tape_raw_data_from_disk = 1; 
+$gunn_point = 0;    # Default: Darwin data is from Berrimah.
+# Process argv. Check if input/output dirs are readable and writable.
+# Set up options appropriately for program.
+
+$not_report_monitorps = 0;  # Default: yes, send to monitorps.
+$update_inventory_db = 0;   # Not send information to 'gvi_db'.
+
+
+do process_argv(@ARGV);
+print STDERR "This aprogram: $0\n" if ($version);
+print STDERR "     Version: $PROG_VERSION\n";
+$send_status_prog = "send_status"; # send status to monitorps
+$send_status_prog = "echo" if ($not_report_monitorps == 1); # 
+print STDERR "$this_prog: Will not send status messages to monitorps.\n" if ($not_report_monitorps == 1 && $verbose);
+$firstfile_option = "";
+do initialize();
+
+
+# Info to be added to gvi_db. Only applies if ($update_inventory_db ==1)
+%inventory_info = (
+                   'tape_id',         $tape_id,
+				   'tape_start_time', '-1',     # in seconds
+				   'tape_end_time',   '-1',     # in seconds
+				   'tape_nfiles',     '0',
+				   'tape_device',     $device,
+				   'device_location',   '',
+				   'site_name',  $long_site_name,
+				   'site_acronym',    $site_name,
+				   'site_data_type',  $site_data_type
+				   );
+@active_prod = ('level_1');
+
+# Data from tape has different file hierarchy than data from CD.
+# 
+if (&is_tape($device)) {
+	# This uses a child process for running program while it is staging and/or
+	# untarring (Darwin data only) the next file.
+	do run_program_for_tape_hierarchy(1); 
+	$from_tape = 1;
+}
+else {
+	if ($tape_file_type eq $TARRED_FILE) {
+		# Process data set containing tarred files.
+		# Although data may not be from tape, we call 
+		# run_program_for_tape_hierarchy() to take the advantage of having 
+		# the child process doing product processing while the parent process 
+		# untarring the next file.
+		do run_program_for_tape_hierarchy(0);
+	}
+	else {
+		print STDERR "all_tape_level_1 RUNNING is_cd....\n" if ($verbose);
+		# Process data set containing untarred files.
+		# This routine does not fork any process.
+		do run_program_for_cd_hierarchy();
+	}
+}
+
+# Compress the last HDF file(s)
+if ($yes_compress_products == 1) {
+	&compress_product($dir_1C, 1, $max_num_raw_files_per_hour, 
+					  $top_tmp_dir, $L1_1C51) if $no_1C == 0;
+	&compress_product($dir_1B, 1, $max_num_raw_files_per_hour, 
+					  $top_tmp_dir, $L1_1B51) if $no_1B == 0;
+}
+
+
+
+
+#
+# Record the status as finished.  Any job# will do.
+#
+if ($tape_file_type eq $TARRED_FILE || &is_cd($device) || &is_disk($device)) {
+	do send_job_status($program, $save_jobnum+1, "NOFILE" , $FINISHED_STR);
+}
+else {
+	do send_job_status($program, $save_jobnum, "NOFILE" , $FINISHED_STR);
+}
+
+do clean_up("", 0);
+exit $SUCCESS_CODE ;
+
+
+############################# Sub Routines ##############################
+sub usage {
+	print STDERR "Usage ($PROG_VERSION)\n";
+	print STDERR "     $this_prog device tape_id [-v] [-n] [-not_compress] [-leave_raw_data_on_disk]\n",
+	             "         [-i input_dir] [-o top_output_dir ] [-w working_dir] \n";
+	print STDERR "         [-max_num_raw_files_per_hour number]\n";
+	print STDERR "         [-not_report_monitorps]\n";
+#	print STDERR "         [-update_inventory_db [-product_processed_num num] ]\n";
+	print STDERR "         [-start_infile                   { filename | file_sequential_num }] \n";
+	print STDERR "         [-last_infile                    { filename | file_sequential_num }] \n";
+	print STDERR "         [-alternative_working_dirs_file    filename]\n";
+	print STDERR "         [-alternative_top_output_dirs_file filename]\n";
+	print STDERR "         [-t top_tmp_dir ]\n";
+	print STDERR "         [-tape_has_no_header_file | -header_file_number number]\n";
+	print STDERR "         [-first_data_file_number number]\n";
+	print STDERR "         program [options]\n";
+	print STDERR "\n";
+	print STDERR "  where:\n";
+	print STDERR "     device       = disk, CD, /dev/8mm1, /dev/8mm2, etc...\n";
+	print STDERR "     tape_id      = The physical label. Ex. TAPE0001.\n";
+	print STDERR "     -v           : Print verbose messages.\n";
+	print STDERR "     -n           : Do not send e-mail to the user when the file system of the\n",
+	"                    working dir or of the top output dir runs out of disk space.\n";
+
+	print STDERR "     -not_compress: Do not compress the products. Use this option when the \n",
+	             "                    input files are not listed in the order of data-time.\n";
+	print STDERR "     -leave_raw_data_on_disk: Leave raw data on disk when exits. \n",
+                 "                    This only applies to data read from tape.\n";
+	print STDERR "     -i           : Specify the directory for input data. Default = `pwd`\n";
+	print STDERR "     -o           : Specify the top output directory. This will be pre-pended\n",
+                 "                    to any of the relative directories specified in the\n",
+	             "                    program's options. Default = `pwd`. \n";
+	print STDERR "     -w           : Specify the working dir. Default = `pwd`.\n";
+	print STDERR "     -max_num_raw_files_per_hour : \n",
+	             "                    Specify the maximum number of input files per hour. \n",
+                 "                    This will only be used to determine when to compress  \n",
+                 "                    products.  Default: type 'all_tape_level_1'.\n";
+	print STDERR "     -not_report_monitorps:\n",
+	             "                    Do not send status messages to monitorps.\n";
+#	print STDERR "     -update_inventory_db:\n",
+#	             "                    Yes, add information (tape, product, files,...) to the inventory DB.\n",
+#	             "                    Inventory info. may be looked up via a GUI program, 'xgvics'.\n";
+#	print STDERR "     -product_processed_num:\n",
+#	             "                    Specify the number for reprocesses. Default: 1.\n",
+#	             "                    This is used if -update_inventory_db was specified.\n";
+	print STDERR "     -start_infile: Specify the file to start processing at.\n";
+	print STDERR "     -last_infile:  Specify the last file to be processed.\n";
+	print STDERR "     -alternative_working_dirs_file : \n",
+	             "                    Specify filename that contains a list of\n",
+                 "                    alternative working directories to be used \n",
+                 "                    when the system runs out of disk space.\n";
+	print STDERR "     -alternative_top_output_dirs_file : \n",
+	             "                    Specify filename that contains a list of\n",
+                 "                    alternative top ouput directories to be used \n",
+    	         "                    when the system runs out of disk space.\n";
+	print STDERR "     -t           : Specify the directory name for temporary files. Default: /tmp/\n";
+	print STDERR "     -tape_has_no_header_file:\n",
+	             "                    Specify this flag if the first file is data file. This applies to non-berrimah data.\n";
+	print STDERR "     -header_file_number:\n",
+        	     "                    Specify file number of the tape header file. Default: 0.\n";
+
+
+	print STDERR "     -first_data_file_number:\n",
+	             "                    Specify file number of the first raw data file. Default: 1.\n";
+
+
+	print STDERR "     program      = level_1\n";
+	print STDERR "     options      = Options to program. \n";
+	print STDERR "\n NOTE: \n";
+	print STDERR "     1. If device = disk, data files should be named tape_id.#[.gz|.Z] or *.uf[.gz|.Z],\n";
+	print STDERR "        where '#' is a sequential number starting from 0.\n";
+	print STDERR "        Raw Darwin data files are tarred files.\n";
+	print STDERR "\n";
+	print STDERR "     2. If device = CD, the input directory for MELBOURNE and KWAJ data should \n";
+	print STDERR "        contain files named tape_id.#[.gz|.Z], where '#' is a sequential \n";
+	print STDERR "        number starting from 0; the input directory for Darwin data should \n";
+	print STDERR "        contain a tape header file named tape_id.{0|000|0000|00000} and data files named \n";
+	print STDERR "        *.vol[.gz|.Z]. The header file for Berrimah data contains \"Berrimah\".\n";
+	print STDERR "\n";
+	print STDERR "     3. Use either a 3-, 4-, 5-digit, or non-leading-zeros number to represent a sequential number.\n";
+	print STDERR "\n";
+
+	print STDERR "     4. Use absolute pathname when specifying '-b', '-c', '-g', and '-u' options; \n",
+	             "        \otherwise, \$top_output_dir will be prepended to the pathnames.\n";
+	print STDERR "\n";
+	print STDERR "     5. This script can process any data set recognized by 'level_1'.\n",
+                 "        For production flow processing, this script treats the files tree of \n",
+                 "        the other data sets like the one for Melbourne data set.  \n",
+                 "        For product processing, the actual program 'level_1' will determine\n",
+                 "        the data's site.\n";
+	print STDERR "\n";
+	print STDERR "     6. To specify the start or the last file, use the following convention:\n",
+                 "          For UF data set for any site:\n",
+                 "            * Specify the filename in this format: .uf[.gz|.Z]\n",
+                 "          Non-Darwin data set: \n",
+	             "            * Use the file's name or sequential number.\n",
+                 "          Darwin data set: \n",
+                 "            * Use the actual VOS filename for data on CD.\n",
+                 "            * Use sequential number, \$tapeid.\$seq#, or \n",
+                 "              \$tapeid.\$seq#[.gz|.Z]_tmp/\$vos_fname for data not on CD.\n",
+	             "          Note: Seq# does not include leading 0s if data is from tape.\n";
+	print STDERR "     7. This script accepts either UF data set or raw radar data set.\n";
+
+	print STDERR "\n";
+	exit $SEVERE_ERROR_CODE;
+
+} # usage
+
+sub process_argv {
+	local(@argv_list) = @_;
+
+	do usage() if ($#argv_list < 2);
+	$device  = shift @argv_list;
+	$tape_id = shift @argv_list;
+# Get this program's options 
+	while ($#argv_list > 0) {
+		
+		$str = shift @argv_list;
+		if ($str eq "-i") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$input_dir = &change2absolute_dir($tmp_str);
+		}
+		elsif ($str eq "-t") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$top_tmp_dir_prefix = &change2absolute_dir($tmp_str);
+		}
+		elsif ($str eq "-product_processed_num") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$prod_processed_num = $tmp_str;
+		}
+		elsif ($str eq "-o") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$top_output_dir = &change2absolute_dir($tmp_str);
+		}
+		elsif ($str eq "-w") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$top_working_dir_prefix =  &change2absolute_dir($tmp_str);
+		}
+		elsif ($str eq "-start_infile") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$start_infile = $tmp_str;
+		}
+		elsif ($str eq "-last_infile") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$last_infile = $tmp_str;
+		}
+		elsif ($str eq "-alternative_working_dirs_file") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$alter_working_dirs_fname = $tmp_str;
+		}
+		elsif ($str eq "-alternative_top_output_dirs_file") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$alter_top_output_dirs_fname = $tmp_str;
+		}
+		elsif ($str eq "-v") {
+			$verbose = 1;
+		}
+		elsif ($str eq "-n") {
+			$send_email = 0;
+		}
+		elsif ($str eq "-update_inventory_db") {
+			$update_inventory_db = 1;
+		}
+		elsif ($str eq "-not_report_monitorps") {
+			$not_report_monitorps = 1;
+		}
+		elsif ($str eq "-max_num_raw_files_per_hour") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$max_num_raw_files_per_hour = $tmp_str;
+		}
+		elsif ($str eq "-not_compress") {
+			$yes_compress_products = 0;
+		}
+		elsif ($str eq "-leave_raw_data_on_disk") {
+			$remove_tape_raw_data_from_disk = 0;
+		}
+		elsif ($str eq "-tape_has_no_header_file") {
+			do usage() if ($header_file_num > 0);
+			$tape_has_no_header_file = 1;
+		}
+		elsif ($str eq "-header_file_number") {
+			do usage() if ($tape_has_no_header_file);
+
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$header_file_num = $tmp_str;
+		}
+		elsif ($str eq "-first_data_file_number") {
+			local($tmp_str) = shift @argv_list;
+			do usage() if ($tmp_str =~ /^\-/);
+			$first_data_file_num = $tmp_str;
+		}
+
+		else {
+			# put string back
+			unshift(@argv_list, $str);
+			last;
+		}
+	}
+	$program = shift @argv_list;
+	do usage() if ($program eq "" || $program =~ /^\-/);
+	@options = @argv_list;  # Options for $program
+	$top_working_dir = "$top_working_dir_prefix$top_working_dir_suffix";
+
+    # Create dirs if not exist
+	do do_system_call("mkdir -p $top_working_dir", "") if (!-d $top_working_dir);
+
+	# Set default
+	$input_dir = $top_working_dir if $input_dir eq "";
+	
+# Data will be read from tape to the top working dir.
+	$input_dir = $top_working_dir if (&is_tape($device));
+	
+	print STDERR "Options: @options\n" if ($verbose);
+	
+	local($options_str) = "@options";
+	do extract_level1_dirs_from_options(*dir_1C, *dir_1B, *dir_1C_UF, 
+										*gif_image_dir, *no_1C,
+										*no_1B, @options);
+	$user_specified_dir_1C = $dir_1C;
+	$user_specified_dir_1B = $dir_1B;
+	$user_specified_dir_1C = $top_output_dir."1C-51" if $dir_1C eq "";
+	$user_specified_dir_1B = $top_output_dir."1B-51" if $dir_1B eq "";
+	$user_specified_dir_1C_UF = $dir_1C_UF;
+	$user_specified_gif_image_dir = $gif_image_dir;
+	if ($no_1C == 1 && $no_1B == 1 && $dir_1C_UF eq "" && 
+		$gif_image_dir eq "") {
+		print STDERR "$this_prog: Error: User specified no product to be produced. See usage for 'level_1'\n";
+		exit($SEVERE_ERROR_CODE);
+	}
+
+	# Change the file's sequential number to filename for start_infile and 
+	# last_infile if required.
+	if ($last_infile =~ /^\d+$/ &&
+		$start_infile =~ /^\d+$/) {
+		if ($last_infile < $start_infile) {
+			print STDERR "$this_prog: Error: Invalid specified start and last infile sequential numbers.\n";
+			exit($SEVERE_ERROR_CODE);
+		}
+	}
+	if ($start_infile =~ /^\d+$/) {
+		$start_infile = &get_filename($input_dir, $start_infile);
+	}
+	if ($last_infile =~ /^\d+$/) {
+		$last_infile = &get_filename($input_dir, $last_infile);
+	}
+	# Set nopath filename.
+	local(@fpath) = split(/\//, $last_infile);
+	$last_infile_nopath = $fpath[$#fpath];
+
+
+} # process_argv
+
+sub initialize {
+	#### Setup dir names and temp file names
+
+	# Set tmp dir and create it.
+	$top_tmp_dir = "$top_tmp_dir_prefix$top_tmp_dir_suffix" if $top_tmp_dir eq "";
+
+
+	do do_system_call("mkdir -p $top_tmp_dir", "") if (!-d $top_tmp_dir);
+
+
+	chdir($top_working_dir);    # Go to the working dir.
+
+	local($old_top_working_dir) = $top_working_dir;
+	local($old_top_output_dir) = $top_output_dir;
+
+    # The first file is the header file.  
+    # The second file through the end of tape are data files.
+    #
+    # If tape is from MELBOURNE, then first file will be used
+    # as a parameter to each execution of $program. 
+    #
+    # If tape is from Darwin, then data files obtained from tape need
+    # to be un-tarred and unzipped before they can be used by $program product.
+	$pathname = $input_dir; 
+
+	# First filename is a fullpath name.
+	$first_filename = "";
+	$first_filename = &get_first_file($pathname) 
+		if (!$tape_has_no_header_file); 
+
+	@save_alter_top_working_dirs = 
+		&read_dirs_from_file($alter_working_dirs_fname, 0);
+	@alter_top_working_dirs = @save_alter_top_working_dirs;
+
+	@save_alter_top_output_dirs = 
+		&read_dirs_from_file($alter_top_output_dirs_fname, 0);
+	@alter_top_output_dirs = @save_alter_top_output_dirs;
+
+	do setup_for_site_related();
+
+	if ($uf_tape == 1 && 
+		(($start_infile ne "" && $start_infile !~ /\.uf((\.gz)|(\.Z))?$/) ||
+		 ($last_infile ne "" && $last_infile !~ /\.uf((\.gz)|(\.Z))?$/))) {
+		print STDERR "$this_prog: Start infile or last infile must be filename for UF data set.\n";
+		do clean_up($program, 0);
+		exit($SEVERE_ERROR_CODE);
+	}
+	if (&use_child_process()) {
+		# If data is on tape, we will fork process to run program.
+		# Save options in a tmp file.  This file will be read by a child process.
+		# This file may be modified by a child process.
+		$options_tmp_fname = $top_tmp_dir."alltapel1opt.$ppid";
+
+		# Copy file to a tmp file
+		# Use tmp files to store alter_working_dirs and alter_top_output_dirs.
+		# This file will be read by a child process.
+		# This file may be modified by a child process. 
+		$alter_working_dirs_tmp_fname = $top_tmp_dir."alltapel1awkd.$ppid";
+		$alter_top_output_dirs_tmp_fname  = $top_tmp_dir."alltapel1aod.$ppid";
+
+		do copy_file($alter_working_dirs_fname, $alter_working_dirs_tmp_fname);
+		do copy_file($alter_top_output_dirs_fname, $alter_top_output_dirs_tmp_fname);
+
+        # This file will save all the top dirs (output, working, and tmp)
+		$top_dirs_tmp_fname = $top_tmp_dir."alltapel1td.$ppid" 
+	}
+	# Change 1C, 1B and UF pathnames appropriately and 
+	# update the option list as well.
+	@options = do process_product_pathnames(@options);
+	
+} # initialize
+
+sub use_child_process {
+	# returns 1 if data is from tape or will fork a child; 0, otherwise.
+
+	return 1 if (&is_tape($device));
+
+	# Although data is from disk, 
+	# we fork a child process for product
+	# processing while the parent process untarring the next file.
+	return 1 if $tape_file_type eq $TARRED_FILE;
+	return 0;
+}
+
+sub copy_file {
+	# Copy file1 to file2
+	local($file1, $file2) = @_;
+	do do_system_call("cp $file1 $file2", "") if ($file1 ne "" && $file2 ne "");
+}
+
+sub process_product_pathnames {
+	local(@options) = @_;
+	# Change 1C, 1B and UF pathnames appropriately and create them
+	# if they do not exist.
+	# Update the option list as well and return the new list.
+	#
+	# 1C-51
+
+	do extract_level1_dirs_from_options(*dir_1C, *dir_1B, *dir_1C_UF, 
+										*gif_image_dir, *no_1C, 
+										*no_1B, @options);
+
+	if ($no_1C == 0) {
+		$dir_1C_save = $dir_1C;
+		# Prepend top_output_dir to dir_1C
+		$dir_1C = &create_absolute_path($user_specified_dir_1C);
+		if ($dir_1C_save eq "") {
+			push(@options, "-c $dir_1C"); # add option to list
+		}
+		# Create dirs if not existed.
+		do do_system_call("mkdir -p  $dir_1C", "") if ($dir_1C ne "" && !(-d $dir_1C));
+
+		# Check if output dirs are writable and readable.
+		if ($dir_1C ne "" && !(-w $dir_1C && -r $dir_1C)) {
+			print STDERR "$this_prog: Error: dir_1C <$dir_1C> is not a readable/writeable directory.\n";
+			exit($SEVERE_ERROR_CODE);
+		}
+	}
+
+	# 1B-51
+	if ($no_1B == 0) {
+		$dir_1B_save = $dir_1B;
+		# Prepend top_output_dir to dir_1B
+		$dir_1B =  &create_absolute_path($user_specified_dir_1B);
+		if ($dir_1B_save eq "") {
+			push(@options, "-b $dir_1B"); # add option to list
+		}
+		# Create dirs if not existed.
+		do do_system_call("mkdir -p  $dir_1B", "") if ($dir_1B ne "" && !(-d $dir_1B));
+
+		# Check if output dirs are writable and readable.
+
+		if ($dir_1B ne "" && !(-w $dir_1B && -r $dir_1B)) {
+			print STDERR "$this_prog: Error: dir_1B <$dir_1B> is not a readable/writeable directory.\n";
+			exit($SEVERE_ERROR_CODE);
+		}
+	}
+	# 1C-51 UF
+	if ($dir_1C_UF ne "") {
+		$dir_1C_UF_save = $dir_1C_UF;
+		# Prepend top_output_dir to dir_1C_UF
+		$dir_1C_UF = &create_absolute_path($user_specified_dir_1C_UF);
+
+		# Create dirs if not existed.
+		do do_system_call("mkdir -p  $dir_1C_UF", "") if ($dir_1C_UF ne "" && !(-d $dir_1C_UF));
+
+		# Check if output dirs are writable and readable.
+		if ($dir_1C_UF ne "" && !(-w $dir_1C_UF && -r $dir_1C_UF)) {
+			print STDERR "$this_prog: Error: dir_1C <$dir_1C_UF> is not a readable/writeable directory.\n";
+			exit($SEVERE_ERROR_CODE);
+		}
+	}
+	# Gif images
+	if ($gif_image_dir ne "") {
+		$gif_image_dir_save = $gif_image_dir;
+		# Prepend top_output_dir to gif_image_dir
+		$gif_image_dir = &create_absolute_path($user_specified_gif_image_dir);
+
+		# Create dirs if not existed.
+		do do_system_call("mkdir -p  $gif_image_dir", "") if ($gif_image_dir ne "" && !(-d $gif_image_dir));
+
+		# Check if output dirs are writable and readable.
+		if ($gif_image_dir ne "" && !(-w $gif_image_dir && -r $gif_image_dir)) {
+			print STDERR "$this_prog: Error: gif_image_dir  <$gif_image_dir> is not a readable/writeable directory.\n";
+			exit($SEVERE_ERROR_CODE);
+		}
+	}
+
+    # Update options list to reflect the new pathnames
+	$options_list = join(' ', @options);   # Change array to list
+	$options_list =~ s#(\-b\s+$dir_1B_save)#\-b $dir_1B# if $dir_1B_save ne "";
+	$options_list =~ s#(\-c\s+$dir_1C_save)#\-c $dir_1C# if $dir_1C_save ne "";
+	$options_list =~ s#(\-u\s+$dir_1C_UF_save)#\-u $dir_1C_UF# if $dir_1C_UF_save ne "";
+	$options_list =~ s#(\-g\s+$gif_image_dir_save)#\-g $gif_image_dir# if $gif_image_dir ne "";
+	@options = split(' ', $options_list);  # Turn it back into array
+
+	if (&use_child_process()) {
+		# Save options to a tmp file.  This file will be read by a child process.
+		# This file may be modified by a child process.
+		do write_options_to_file($options_tmp_fname, @options);
+	}
+
+	# If input data is from disk,
+	# make sure that the input dir is not the same as the output dirs--
+	# this is so to allow HDF files read as inputs.
+	if (&is_disk($device) &&
+		($dir_1C eq $input_dir || $dir_1B eq $input_dir ||
+		 $dir_1C_UF eq $input_dir)) {
+		print STDERR "$this_prog: ERROR: Input dir. name <$input_dir> is the same as 1C product's dir. name.\n" if ($dir_1C eq $input_dir);
+		print STDERR "$this_prog: ERROR: Input dir. name <$input_dir> is the same as 1B product's dir. name.\n" if ($dir_1B eq $input_dir);
+		print STDERR "$this_prog: ERROR: Input dir. name <$input_dir> is the same as 1C uf product's dir. name.\n" if ($dir_1C_UF eq $input_dir);
+
+		exit $SEVERE_ERROR_CODE;
+	}
+	return @options;
+}
+
+sub create_absolute_path {
+	local($rpath) = @_;
+	# Remove leading blank 
+	$rpath =~ s/^\s+//;
+	if ($rpath =~ /^\./) {
+		if ($rpath eq "." || $rpath eq "./") {
+			$rpath = "$top_output_dir";
+		}
+		else {
+			print STDERR "$this_prog: dir <$rpath> is invalid; Can't prepend \$top_output_dir to it.\n";
+			exit $SEVERE_ERROR_CODE;			
+		}
+	}
+	elsif ($rpath !~ /^\//) {
+		$slash = "";
+		$slash = "/" if !($top_output_dir =~ /\/$/);
+		$rpath = "$top_output_dir$slash$rpath";
+	}
+	$rpath = "$rpath/" if !($rpath =~ /\/$/);
+	return $rpath;
+}
+
+sub setup_for_site_related {
+	
+
+	
+	local($site_option) = "";
+
+	# Data files are untarred except for Darwin data from either tape or
+    # from disk.
+	$tape_file_type = $UNTARRED_FILE;
+
+	if ($tape_has_no_header_file) {
+		print STDERR "$this_prog: Warning: Header file does not exist.\n" if ($verbose);
+			print STDERR "$this_prog: Warning: Will continue and let '$program' determine site.\n" if ($verbose);
+			print STDERR "$this_prog: Warning: Will assume tape/disk contains compressed/non-compressed file(s).\n" if ($verbose);
+			$firstfile_option = "";
+			$site_name = $unknown;
+	}
+	else {
+		local($tape_type_str) = `dd bs=44 count=1 if=$first_filename`;
+		if (&is_melb_tape($tape_type_str)) {
+			# MELBOURNE tape
+			$firstfile_option = "-f $first_filename ";
+			$site_name = $melb;
+			$long_site_name = "Melbourne";
+			$site_data_type = "WSR88D";
+		}
+		# Check for Berrimah (DARB) before Gunn Point (DARW)
+		elsif (&is_darb_tape($tape_type_str)) {
+			# Darwin -- Berrimah tape
+			$previous_untarred_file_count = 0;
+			$site_name = $darb;
+			$long_site_name = "Berrimah";
+			$site_data_type = "RAPIC";
+			
+			# With data from disk and tape, the files are tarred.
+			# With data from CD, the files are untarred.
+			$tape_file_type = $TARRED_FILE
+				if (&is_tape($device) || &is_disk($device));
+		}
+		elsif (&is_darw_tape($tape_type_str)) {
+			# Darwin--Gunn Point tape
+			
+			$previous_untarred_file_count = 0;
+			$site_name = $darw;
+			$long_site_name = "Gunn Point";
+			$site_data_type = "LASSEN";
+			# With data from disk and tape, the files are tarred.
+			# With data from CD, the files are untarred.
+			$tape_file_type = $TARRED_FILE 
+				if (&is_tape($device) || &is_disk($device));
+			$gunn_point = 1;
+		}
+		elsif (&is_kwaj_tape($tape_type_str)) {
+			# Kwajalein
+			$site_name = $kwaj;
+			$long_site_name = "Kwajalein";
+			$site_data_type = "NSIG";
+		}
+		elsif (&is_uf_tape($first_filename, *site_name)) {
+			# UF file. 
+			$uf_tape = 1;
+		}
+		else {
+			print STDERR "$this_prog: Warning: First file is empty or doesnot indicate either Darwin, Kwajalein, UF, or Melbourne.\n" if ($verbose);
+			print STDERR "$this_prog: Warning: Will continue and let '$program' determine site.\n" if ($verbose);
+			print STDERR "$this_prog: Warning: Will assume tape/disk contains compressed/non-compressed file(s).\n" if ($verbose);
+			$firstfile_option = "-f $first_filename ";
+			$site_name = $unknown;
+		}
+	}
+
+	print STDERR "$this_prog: Radar site: $site_name\n" if ($verbose);
+	local($opts_str) = "@options";
+	# Don't replace the user specified first filename and site name with
+	# first_filename and site_name if they exist; else add them to option list.
+
+	if ($opts_str =~ /-f\s+\S+/) {
+# Override w/ user specified -f -- JHMN 6/17/97
+#		$opts_str =~ s/\-f\s+\S+/$firstfile_option/;
+
+		# save user specified first filename.
+		($firstfile_option) = $opts_str =~ /(-f\s+\S+)/;
+	}
+	else {
+		# add to list
+		$opts_str = "$opts_str $firstfile_option";
+	}
+
+	@options = split(' ', $opts_str);  # Turn it back into array
+
+} # setup_for_site_related
+
+sub send_job_status {
+	local($program, $jobnum, $infile, $stat) = @_;
+	# stat can either be status string or index to stat_array.
+
+	local($i) = -1;
+	for ($i = 0; $i < 7; $i++) {
+		last if ($stat eq $stat_array[$i]);
+	}
+
+	$i = $stat if ($i < 0 || $i >= 7);
+
+	if ($infile ne "") {
+		do set_products_status(*products_status, $stat_array[$i], @active_prod) if ($program eq $active_prod[0]);
+		local($send_cmd) = "$send_status_prog -e $jobnum $tape_id $device $program $infile $stat_array[$i]";
+print STDERR "Executing <$send_cmd>...\n" if ($verbose);
+
+		system($send_cmd);
+		local($status) = $? >> 8;
+		local($signal) = $? & 255;
+		do doexit_handler($signal) 
+			if ($signal eq 'INT' || $signal eq 'KILL' || $signal eq 'STOP' ||
+				$signal == 9 || $signal == 2);
+		
+		do doexit_handler('INT') if (&interrupted($status));
+
+	}
+
+	if ($stat_array[$i] eq $RUNNING_STR) {
+		$save_infile = $infile;
+		$save_jobnum = $jobnum;
+		$save_program = $program;
+	}
+	else {
+		$save_infile = "";
+	}
+
+
+}
+
+
+sub get_first_file {
+	local($input_dir) = @_;
+	# Get the header filename assuming files are non-UF files.
+	local($first_filename) = &get_filename($input_dir, $header_file_num);
+	$full_filename = $first_filename;    # Will be used in clean_up();
+	$save_jobnum = $jobnum;              # Will be used in clean_up();
+	if (!&is_tape($device)) {
+		if ($first_filename eq "" || !(-e $first_filename)) {
+			# Check if the input files are UF, get the first file.
+			opendir(THIS_DIR, $input_dir) || (do clean_up($program, 0) &&
+											  exit($SEVERE_ERROR_CODE));
+			local(@uf_files) =  grep(/\.uf/, readdir(THIS_DIR));
+			closedir(THIS_DIR);
+			if ($#uf_files < 0) {
+				print STDERR "$this_prog: There is no header file <$first_filename>  in $input_dir\n";
+				do clean_up($program, 0);
+				exit($SEVERE_ERROR_CODE);
+			}
+			@uf_files = sort(@uf_files);
+			$first_filename = $input_dir.$uf_files[0];
+			chop $first_filename if $first_filename =~ /(\r)|(\n)/;  # Remove newline if any
+			$full_filename = $first_filename;    # Will be used in clean_up();
+
+		}
+		do send_job_status($program, $jobnum, $first_filename, $RUNNING_STR);
+		do send_job_status($program, $jobnum, $first_filename, $SUCCESSFUL_STR);
+
+	}
+	else {
+		# Data is from tape.
+        #
+# Setup the work area.
+# 
+###system("mkdir 1C-51_tape_" . $tape_id);
+###system("chmod g+w 1C-51_tape_" . $tape_id);
+###chdir("1C-51_tape_" . $tape_id);
+
+		do send_job_status("dd", $jobnum, $first_filename, $RUNNING_STR);
+
+#
+# Get the tape ready.
+#
+		print STDERR "$this_prog: Rewinding tape...\n" if ($verbose);
+		do do_system_call("mt -t $device rewind", "");
+		do do_system_call("mt -t $device setblk 0", ""); # This is required on Linux, ingnored on
+		# all other systems.
+
+
+
+# Extract the first file to disk; it's the header.  It will be used
+# as a parameter to each execution of $program.
+
+		local($rc) = &do_system_call("dd if=$device of=$first_filename bs=32k",
+									 $first_filename);
+		#
+		# What was the exectution status for getting the first file?
+		#
+		do send_job_status("dd", $jobnum, $first_filename, $rc+1);
+	}
+
+	return $first_filename;
+} # get_first_file 
+
+sub go_forward_to_start_file {
+	# Returns the number of the first file to be processed.
+	# If data is from tape, it forwards the tape to the first (start) file 
+	# to be processed.
+    #
+	# Expect $start_file to be either one of these: 
+	#    1. [path]$tapeid.$file_num[.gz|.Z]_tmp/$fname (for Darwin or 
+	#                 tape containing tarred files)
+	#    2. [path]$tapeid.$file_num[.gz|.Z] 
+	#
+	local($start_file) = @_;
+	local($fnum);	
+	# Start infile is the filename.
+	local(@fname_path) = split(/\//, $start_file);
+	local($start_fname) = $fname_path[$#fname_path];
+
+	local($tarred_fname);
+	$tarred_file_start_fname = ""; 
+	if ($tape_file_type eq $UNTARRED_FILE) {
+		($fnum) = $start_fname =~ /^.+\.(\d+).*/;
+	}
+	elsif ($tape_file_type eq $TARRED_FILE) {
+		$tarred_fname = $fname_path[$#fname_path-1];
+		if ($tarred_fname =~ /_tmp$/) { 
+			($fnum) = $tarred_fname =~ /^.+\.(\d+).*_tmp/;
+			$tarred_file_start_fname = $start_fname;
+		}
+		else {
+			$tarred_fname = $fname_path[$#fname_path];
+			($fnum) = $tarred_fname =~ /^.+\.(\d+).*/;
+		}
+		
+print STDERR "tar-ed file: $tarred_fname, fnummmmm: $fnum, tarred file: 	$tarred_file_start_fname>\n" if ($verbose);
+    }
+	if (&is_tape($device)) {
+		# Forward tape to the $fnum-th file.
+		print STDERR "$this_prog: Forwarding tape to file \# $fnum ...\n" if ($verbose);
+		local($start_filenum) = $fnum-1;
+		do do_system_call("mt -t $device fsf $start_filenum", "") if $from_tape;
+
+	}
+    
+	$fnum =~ s/^0+//g;  # Remove leading 0s.
+	return $fnum;
+	
+} # go_forward_to_start_file
+
+
+sub run_program_for_cd_hierarchy {
+#	Data is expected to be on disk (for Non Darwin data only) or CD 
+#   (for all sites).
+#
+# Note: File sequential number may either be a 3-, 4-, 5-digit, or 
+#       no-leading-zeros number.
+# 1. Support CD/disk having the following file hierarchy (untarred files, 
+#    i.e. MELBOURNE):
+#   t001.000
+#   t001.001[.gz|.Z]
+#     ...
+#   t001.???[.gz|.Z]
+# where 't001' is tape_id. t001.[001-???] are data files, and
+#   t001.000 is a header file.
+#
+# 2. Support CD having the following file hierarchy (untarred files, i.e. 
+#    Darwin):
+#   t002-i.000
+#   *.vol[.Z|.gz]
+# where 't002-i' is tape_id. t002-i.000 is a header file and the rest are
+# data files.
+#
+#
+# Note: There is no empty file to indicate no more data file.	
+#
+	opendir(INPUT_DIR, $input_dir) || (do clean_up("", 0) && exit($SEVERE_ERROR_CODE));
+	# Only process data file with either tapeid (untarred file, i.e. MELBOURNE) 
+	# .uf (UF files), or "vol" (tarred file, i.e. Darwin).
+	local(@raw_file_list) = grep(/(${tape_id})|(vol)|(\.uf)/, readdir(INPUT_DIR));
+    closedir(INPUT_DIR);
+	# Process data files (second file on) only.  Header file had been 
+	# processed.
+
+    # Sort file list
+    @raw_file_list = sort @raw_file_list;
+
+printf(STDERR "all_tape_level_1 RUNNING 0-raw_file_list=<%s>\n",join(' ',@raw_file_list)) if ($verbose);
+    local($first_data_fname) = &get_filename($input_dir, $first_data_file_num);
+printf(STDERR "all_tape_level_1 RUNNING first_data_fname=<%s>\n",$first_data_fname) if ($verbose);
+    # Remove unwanted files from the beginning of list.
+# run this only if @raw_file_list does not contain .uf files,
+# since the first .uf file was being removed from @raw_file_list
+# and not put into the .HDF file
+if (join(' ',@raw_file_list) !~ /\.uf/) {
+    @raw_file_list = &remove_processed_files_from_list($input_dir, 0, 
+	   $first_data_fname, @raw_file_list) if $first_data_fname ne "";
+printf(STDERR "all_tape_level_1 RUNNING 1-raw_file_list=<%s>\n",join(' ',@raw_file_list)) if ($verbose);
+}
+ 
+    # Remove unwanted files from the beginning of list.
+    @raw_file_list = &remove_processed_files_from_list($input_dir, 0, 
+	   $start_infile, @raw_file_list) if $start_infile ne "";
+printf(STDERR "all_tape_level_1 RUNNING 2-raw_file_list=<%s>\n",join(' ',@raw_file_list)) if ($verbose);
+
+
+    # Remove unwanted files from the end of list.
+    @raw_file_list = &remove_bottom_unwanted_files_from_list($input_dir, 0,
+	   $last_infile_nopath, @raw_file_list) if $last_infile ne "";
+printf(STDERR "all_tape_level_1 RUNNING 3-raw_file_list=<%s>\n",join(' ',@raw_file_list)) if ($verbose);
+
+printf(STDERR "all_tape_level_1 RUNNING 4-raw_file_list=<%s>\n",join(' ',@raw_file_list)) if ($verbose);
+	while (@raw_file_list) {
+		local($raw_file) = shift @raw_file_list;
+		print STDERR "all_tape_level_1 RUNNING rawfile=<$raw_file>\n" if ($verbose);
+
+		# Skip if it's the first file and is not a UF file.
+		# Filename might have either 3- or 4-digit sequential number for
+        # non-UF files. UF files end with .uf[.gz|.Z].
+#		next if ($raw_file =~ /\.000$/ || $raw_file =~ /\.0000$/ ||
+#				 $raw_file =~ /\.00000$/ || $raw_file =~ /\.0$/);
+		next if ($raw_file =~ /\.0+$/);
+
+		# Skip if filename doesn't end with ###, uf, .gz, vol, or .Z
+		next if (!($raw_file =~ 
+				   /(\.\d+$)|(\.gz$)|(\.Z$)|(\.uf$)|(vol$)/));
+		$raw_file = $input_dir.$raw_file;
+        chop $raw_file if $raw_file =~ /(\r)|(\n)/;  # Remove newline if any
+		# Skip if file has zero size						  
+	    next if -z $raw_file;							  
+		$save_jobnum = $jobnum;
+		$jobnum++;
+
+
+
+        do update_inventory_info_list($raw_file, 1) 
+			   if ($update_inventory_db);
+
+		@options = do run_program($program, $jobnum, *raw_file, @options);
+	}
+
+} # run_program_for_cd_hierarchy
+
+sub run_program_for_tape_hierarchy {
+	local($from_tape) = @_;
+# Run program with data either on disk (for tape with tarred files only) or 
+# from tape.
+# Tape or disk must has the following file structure (tapeid.senquential#):
+#      tape001.000
+#      tape001.001[.gz|.Z]
+#       ...
+#      tape001.???[.gz|.Z]
+#     where, 
+#      tape001.[001 - ???] are data files 
+#         (If $tape_file_type = $TARRED_FILE,  these files are 
+#          tarred files of compressed files). 
+#      tape001.000 is a header file.
+#
+# Note: File sequential number may either be a 3-, 4-, 5-digit, or 
+#       no-leading-zeros number.
+#
+# Note: The last file has zero size to indicate end of tape --
+#       Exception: With Berrimah-Darwin data, there may be an empty file
+#       in between two files; therefore, the first zero size file encountered
+#       will be ignored.
+#
+#
+	$status = 0;
+	local($dd_jobnum) = 1;
+	local($last_infile_is_reached) = 0;
+	local($skip_this_file) = 0;  
+
+	# Skip to the user specified start file if applied.
+	if ($start_infile ne "") {
+		$n = do go_forward_to_start_file($start_infile);
+		$n--;
+	}
+	else {
+		$n = $first_data_file_num;
+		$n--;
+		if ($site_name eq $darb) {
+			# For Berrimah data, tape has no header file; thus, the first 
+			# file is a data file already staged on disk that will be
+            # processed.
+			$full_filename = $first_filename;
+			local(@first_fname_path) = split(/\//, $full_filename);
+			$filename = $first_fname_path[$#first_fname_path];
+			goto PROCESS_INFILE;   
+		}
+		print STDERR "$this_prog: Data starts at file #", "$first_data_file_num\n" if ($verbose);
+	}
+
+# For each file, here is what will happen:
+#    1. Run $program.
+#    2. While running $program stage the next tape file to disk.  (done by fork)
+#    3. Wait for $program to complete.
+#    4. Go to 1.
+#    See the note above regarding zero size file.
+#
+
+
+
+	while (1) {
+# Get the next file.  Stage it to disk.
+#
+# The UNTARRED_FILE tape type, i.e., MELBOURNE, case is simple; just stage it
+# to disk.
+# For TARRED_FILE tape type, i.e., Darwin (Darwin):
+#    1. Create a work directory to store the untarred files.
+#    2. Pipe the tape file through tar.
+#
+		$n++;
+		$filename = &get_filename("", $n);
+		# Reset pathname-- since outofspace might have occurred.
+		$pathname = $top_working_dir if (&is_tape($device));
+		$full_filename = &get_filename($pathname, $n);
+		
+		if ($from_tape) {
+			# Read file from tape
+			do send_job_status("dd", $dd_jobnum, $full_filename, $RUNNING_STR);
+			
+			local($rc) = &do_system_call("dd if=$device of=$full_filename bs=32k", "");
+			do send_job_status("dd", $dd_jobnum, $full_filename, $rc + 1);
+			$dd_jobnum++;
+		}
+
+PROCESS_INFILE:
+
+		# Only want to process up to the specified last infile.
+		# Last infile is reached if the tarred file's name matched
+		# $last_infile_nopath.
+		$last_infile_is_reached = 1 if ($last_infile_nopath ne "" &&
+										$filename =~ /$last_infile_nopath/ &&
+										$filename !~ /.+_tmp.+/);
+
+
+#
+
+#Special debugging; make a tape seem short.
+#if ($n >= 3) {
+#unlink $full_filename;
+#system("touch $full_filename");
+#}
+
+		# Check for either the end of tape, done, or an empty file (for 
+        # Berrimah Darwin data only) between non-empty files.
+		if ($full_filename eq "" || 
+			-z $full_filename || !(-e $full_filename)) {
+			# File is empty or doesnot exist.
+			if (($site_name eq $darb) && 
+				($skip_this_file == 0)) {
+				# Empty file.  This file may exist between two non-empty files
+                # for DARB. Ignore it.
+				$skip_this_file = 1;
+				# Remove it if it's read from tape.
+				unlink $full_filename if ($from_tape);
+				next;   # Skip
+			}
+			else {
+				# We're done.  Leave while loop.
+				do send_job_status("dd", $dd_jobnum, "NOFILE", $FINISHED_STR);
+				# remove file from disk
+				unlink($full_filename) if ($remove_tape_raw_data_from_disk);
+				last;
+			}
+		} # empty file
+		else {
+			# Non-empty file exists.
+			$skip_this_file = 0;  # Turn the skip flag off.
+		}
+
+		if ($tape_file_type eq $UNTARRED_FILE) {
+			# Files are non tarred.
+			do update_inventory_info_list($full_filename, 1)
+			   if ($update_inventory_db);
+			$save_jobnum = $jobnum;
+			$jobnum++;
+		} else {
+			# Files are tarred.
+# It seems that 'dd | tar' does not get past the EOF marker on the tape.
+# What does, though, is to run dd, then run tar.  Odd!
+			
+
+			# Prepare the next file for processing, i.e. 
+			# Create a tmp dir and untar the next file to this tmp dir.
+
+			$jobnum += ($previous_untarred_file_count);
+			$save_jobnum = $jobnum;
+			$jobnum++;
+			# Only keep the wanted files on disk.
+			do untar_tarred_file($full_filename, *last_infile_is_reached);
+			do update_inventory_info_list($untarred_files_dir, 2)
+				if ($update_inventory_db);
+			unlink $full_filename 
+				if ($from_tape);
+
+		}
+
+#
+# The 'waitpid' pauses execution until the $program
+# process finishes. We only want to have one child process at one time.
+#
+		if ($pid > 0) {
+			waitpid($pid, 0);      # wait for any previous children, if any.
+			$status = $? >> 8; # What was the exit code?
+			local($signal) = $? & 255;
+			do doexit_handler($signal) if ($signal != 0);
+			do doexit_handler('INT') if (&interrupted($status));
+			if (&out_of_space($status)) {
+				do clean_up("", 0);
+				exit($OUT_OF_SPACE_CODE);
+			}
+			# continue even though error occurred.
+		}
+
+#
+# To run $program and get the next file to disk, we fork and run $program.  The
+# 'wait' above will ensure that only one $program process is running.
+# 
+#
+
+
+## test_c is for TESTING OUTOFSPACE
+$test_c ++;
+
+	  FORK: {
+		  if ($pid = fork) {
+			  # Parent.  Stage the next file (top of the while loop).
+		  } elsif (defined $pid) {
+			  # Child.  
+			  do 'all_tape_common.pl';
+
+			  &process_prog($jobnum,   
+							*full_filename, @options);
+
+			  print STDERR "Finished with input level 1 file \#$n\n" if ($verbose);
+
+			  unlink $full_filename 
+				  if ($from_tape && $remove_tape_raw_data_from_disk);
+			  exit $SUCCESS_CODE;
+		  } elsif ($! =~ /No more process/) {
+			  # EAGAIN, supposedly recoverable.
+			  sleep 5;
+			  redo FORK;
+		  } else {
+			  print STDERR  "Can't fork: $!\n";
+			  do clean_up("fork", 0);
+			  kill 'KILL', $pid if $pid > 0;  # Kill child
+              exit($SEVERE_ERROR_CODE); 
+		  }
+	  }
+	  last if ($last_infile_is_reached == 1);
+		
+	} # while
+
+DONE:
+	if ($pid > 0) {
+		waitpid($pid, 0); # For the child to die.
+		$status = $? >> 8;
+		local($signal) = $? & 255;
+		do doexit_handler($signal) if ($signal != 0);
+		do doexit_handler('INT') if (&interrupted($status));
+		if (&out_of_space($status)) {
+			do clean_up("", 0);
+			exit($OUT_OF_SPACE_CODE);
+		}
+	 }
+
+	# Adjust the last job number for tarred file. 
+    # Note: jobnum is modified by the child process and is needed to be 
+	# passed back to the parent process. This is a work around
+	# method for updating jobnum -- 
+    # 
+	if ($tape_file_type eq $TARRED_FILE) {
+		$jobnum += ($previous_untarred_file_count);
+		local($nfiles_unprocessed) = &get_numofentries_in_dir($untarred_files_dir);
+		$jobnum -= $nfiles_unprocessed if ($nfiles_unprocessed > 0);
+		$save_jobnum = $jobnum;
+	}
+
+
+	# Remove files from disk if data is from tape.
+	if ($from_tape) {
+		if ($remove_tape_raw_data_from_disk) {
+			unlink $first_filename if ($first_filename ne "");
+			unlink $full_filename;
+		}
+		print STDERR "Unloading tape: $tape_id\n" if ($verbose);
+		do do_system_call("mt -t $device offline", "") if ($testing == 0);
+	}
+
+} # run_program_for_tape_hierarchy
+
+
+sub read_options_from_file {
+	# Returns @options  read from a file.
+	local($fname) = @_;
+	local($opts);
+	local(@opts_list);
+
+	open (OPTIONS, $fname) || return @opts_list;
+	flock(OPTIONS, $LOCK_EX);  # lock file
+	$opts = <OPTIONS>; 
+	flock(OPTIONS, $LOCK_UN);  # unlock file
+	close(OPTIONS);
+
+	chop $opts if $opts =~ /(\n)|(\r)/;
+	@opts_list = split(/ /, $opts);
+
+	return @opts_list;
+}
+
+sub	write_options_to_file {
+	local($options_tmp_fname, @options) = @_;
+	open(TMP_FILE, ">$options_tmp_fname") ||
+		(print STDERR "$this_prog: Can't write options to file <$options_tmp_fname>\n" && return);
+	flock(TMP_FILE, $LOCK_EX);  # lock file
+	local($options_str) = join(' ', @options);
+	print TMP_FILE "$options_str\n";
+	flock(TMP_FILE, $LOCK_UN);  # unlock file
+	close(TMP_FILE);
+}
+
+
+sub untar_tarred_file {
+	local($full_filename, *last_infile_is_reached) = @_;
+
+	# Create a tmp directory and untar the tarred file there. Set the jobnum.
+	# The temporary directory should contain individual compressed files, i.e.,
+	#  *.vol.Z
+	# Set $last_infile_is_reached = 1 if the last file to be processed exists
+	# in this set of compressed files. 
+	# $last_infile should be something like [path]tapeid.###_tmp/2D194D18.vol.Z
+	# The unwanted files determined by $tarred_file_start_fname and 
+	# $last_infile_nopath will be removed from dir.
+	# Return the number of files in this tmp dir.
+	local(@fname_path) = split(/\//, $full_filename);
+	local($filename) = $fname_path[$#fname_path];
+
+
+	$untarred_files_dir = $top_working_dir.$filename."_tmp/";
+
+	return if !(-e $full_filename);
+	do do_system_call("mkdir -p $untarred_files_dir", "");
+
+	$tarred_filename = $full_filename;
+
+#print STDERR "EXECUTING: cd $untarred_files_dir; tar xf $tarred_filename\n";
+
+	local($rc) = do do_system_call("cd $untarred_files_dir; tar xf $tarred_filename", "");
+	
+#print STDERR "DONE EXECUTING: cd $untarred_files_dir; tar xf $tarred_filename\n";
+
+	opendir(THISDIR, $untarred_files_dir) ||(&clean_up("opendir", 0) && exit($SEVERE_ERROR_CODE));
+	local(@untarred_files) = grep(!/^\.\.?$/, readdir(THISDIR));
+	closedir(THISDIR);
+	@untarred_files = sort @untarred_files;
+	# Remove the unwanted files from disk.
+	if ($tarred_file_start_fname ne "") {
+        # We only need to do this once.
+		# Remove unwanted files from disk
+
+		@untarred_files = &remove_processed_files_from_list($untarred_files_dir, 
+			 1, $tarred_file_start_fname, @untarred_files);
+		$tarred_file_start_fname = "";  
+	}
+	
+	# last infile_is_reached if it exists.
+	if ($last_infile_nopath ne "" &&
+		-e "$untarred_files_dir$last_infile_nopath") {
+		$last_infile_is_reached = 1;
+		# Remove unwanted files from disk
+		@untarred_files = 
+			do remove_bottom_unwanted_files_from_list($untarred_files_dir, 1, 
+													  $last_infile_nopath, 
+													  @untarred_files);
+												  
+	}
+	# determine number of files after untarred.  This number
+	# will be used as offset for jobnum.
+	$previous_untarred_file_count = $#untarred_files;
+
+	chdir $top_working_dir;  # go back to the working dir.
+
+} # untar_tarred_file
+
+
+sub get_numofentries_in_dir {
+	local($dir) = @_;
+
+	return (-1) if ($dir eq "");
+	# Returns the number of entries in the specified dir.
+	opendir(THISDIR, $dir) ||(&clean_up("opendir", 0) && return -1);
+	local(@files) = grep(!/^\.\.?$/, readdir(THISDIR));
+	closedir(THISDIR);
+	return $#files;
+}
+
+sub get_filename {
+	local($path, $fnum) = @_;
+
+	# Construct filename.  
+    # If data is from disk or CD, filename might contain either 4-digit,
+	# 5-digit, 3-digit, or no-leading zero sequential number.
+	# If data is from tape, create filename with sequential number having
+    # no leading 0s.
+	local($filename) = "";
+	if (&is_tape($device)) {
+		local($name) = $path.$tape_id.".".sprintf("%d", $fnum);
+		$filename = $name;
+	}
+	else {
+		# Default: 3-digit sequential number.
+		local($name1) = $tape_id.".".sprintf("%3.3d", $fnum);
+		local($name2) = $tape_id.".".sprintf("%4.4d", $fnum);
+		local($name3) = $tape_id.".".sprintf("%5.5d", $fnum);
+		local($name4) = $tape_id.".".sprintf("%d", $fnum);
+
+		opendir(THIS_DIR, $path) || 
+			return $path.$name1;
+
+		local(@files) = grep(/(${name1}|${name2}|${name3}|${name4})(\.gz|\.Z)?$/, readdir(THIS_DIR));
+		closedir(THIS_DIR);
+
+		return $path.$name1 if ($#files < 0 || $#files > 0);
+		
+		$filename = $path.$files[0];
+	}
+
+	return $filename;
+} 
+
+sub do_system_call {
+	local($cmd, $filename) = @_;
+	# Return 0 for successful,
+	#        -1 for failure,
+	#        5 for interrupted.
+
+#print STDERR "executing: $cmd\n";
+	system($cmd);
+	$status = $? >> 8;
+	local($signal) = $? & 255;
+	local($rc) = 0;
+
+	do doexit_handler($signal) if ($signal != 0);
+	if (&interrupted($status)) {
+		$rc = 5;
+		do send_job_status($save_program, $save_jobnum, $save_infile, $rc);
+		do doexit_handler('INT');
+	}
+	if (&is_severe_error($status)) {
+		print STDERR "$this_prog: Failed executing: $cmd\n" if ($verbose);
+		$rc = -1; # failed
+	}
+	elsif (&is_minor_error($status)) {
+		print STDERR "$this_prog: Warning: No product produced due to anomolous condition.\n" if ($verbose);
+		$rc = 0;    # For now, treat this case as successful.
+	}
+	return $rc;
+
+}
+
+sub clean_up { # This is more like a macro
+	local($cmd, $keep_first_file) = @_;
+
+
+
+	if ($update_inventory_db) {
+		do update_gvi_db(); # Send inventory info to gvi_db.
+	}
+		
+
+	# Remove tmp and working dirs assuming that they are unique for this 
+	# execution.
+	chdir ($save_curr_dir);
+	do do_system_call("rm -fr $top_tmp_dir  > /dev/null 2>&1", "")
+		if ($top_tmp_dir ne "" && -d $top_tmp_dir);
+	
+	unlink $first_filename if ($keep_first_file == 0 && -e $first_filename
+							   && &is_tape($device) &&
+							   $remove_tape_raw_data_from_disk &&
+							   $first_filename ne "");
+	
+	unlink $full_filename if (-e $full_filename && &is_tape($device) &&
+							  $remove_tape_raw_data_from_disk);
+
+	if (($remove_tape_raw_data_from_disk && &is_tape($device)) ||
+		!&is_tape($device)) {
+		# Raw files from tape are copied to the working dir(s).
+		do do_system_call("rm -fr $top_working_dir  > /dev/null 2>&1", "") 
+			if ($top_working_dir ne "" && -d $top_working_dir);
+
+
+		do do_system_call("rm -fr $top_working_dir_prefix2  > /dev/null 2>&1", "") 
+			if ($top_working_dir_prefix2 ne "" && -d $top_working_dir_prefix2);
+
+		# Remove old working dir
+		
+		while (@save_alter_top_working_dirs) {
+			local($dir) = shift @save_alter_top_working_dirs;
+			$dir = "$dir$this_prog_dirname";
+			do do_system_call("rm -rf $dir", "")
+				if ($dir ne "" && -d $dir);
+		}
+	}
+
+	return if ($cmd eq "");
+
+	$num_errors++ if ($cmd =~ "dd" || $cmd =~ "tar");
+	print STDERR "********************* $cmd ERROR: \# errors = $num_errors\n"
+	if ($num_errors > 0);
+
+	if($num_errors >= 5 && &is_tape($device)) {
+		# Only stop processing if reading data from tape.
+		# If reading data from tape, we assume that it can't continue reading
+		# the next file once it received a certain number of errors.
+		print STDERR "Too many errors: $num_errors\n";
+		if ($from_tape) {
+			print STDERR "Unloading $tape_id\n";
+			do do_system_call("mt -t $device offline", "") if ($testing == 0);
+		}
+		# only remove file from disk if it was read from tape.
+		unlink $first_filename if ($remove_tape_raw_data_from_disk &&
+								   $first_filename ne "");
+
+		do send_job_status($program, $save_jobnum, "NOFILE", $FINISHED_STR);
+
+		exit $SEVERE_ERROR_CODE;
+	}
+}
+
+
+sub run_program {
+	local($prog, $jobnum, *infile, @options) = @_;
+	# Returns new @options
+
+	# Check if there is enough disk space, then run prog;
+	# otherwise, act appropriately.
+	@new_options = do check_for_enough_disk_space(*infile, @options);
+
+	do send_job_status($prog, $jobnum, $infile, $RUNNING_STR);
+
+	local($cmd) = "$prog @new_options $infile";
+	print STDERR "all_tape_level_1 RUNNING <$cmd>\n" if ($verbose);
+	local($rc) = &do_system_call($cmd, $infile);
+	# 
+	# Did the program have any errors?
+	# 
+	do send_job_status($prog, $jobnum, $infile, $rc+1);
+	if ($rc != -1) {
+		if ($yes_compress_products == 1) {
+			&compress_product($dir_1C, 0, $max_num_raw_files_per_hour, 
+							  $top_tmp_dir, $L1_1C51) if $no_1C == 0;
+			&compress_product($dir_1B, 0, $max_num_raw_files_per_hour, 
+							  $top_tmp_dir, $L1_1B51) if $no_1B == 0;
+		}
+	}
+	return @new_options;
+}
+
+sub check_for_enough_disk_space {
+	local(*infile, @opts) = @_;
+	# Check if there is enough disk space for the working dir and top
+	# output dir.
+	# Return @opts (unchanged) if there is enough space.
+	# If there is not enough space, handle out of disk space as followed:
+	# 1. No alternative dirs files for top output and working dir were
+	#    specified.
+	#    Notify user of the next file to be processed and stop.
+	#
+	# 2. Use the alternatives dirs from the alter. output dirs and alter. 
+	#    working dirs files. Change options and set up the product(s) 
+	#    paths appropriately, then return the new option list.
+	#    Move the ungranulized hdf files to the new output dir.
+	#    Modify the path name for infile appropriately if $infile
+	#    was moved to a new working dir.
+	#    Return modified @opts.
+
+	# Check for top working dir first
+	$avail_dkspace_4wking_dir = &get_available_disk_space($top_working_dir); # In blocks
+	if ($avail_dkspace_4wking_dir == -1) {
+		do clean_up(" ", 0);
+		kill 'USR1', getppid if $pid == 0;  # Send signal to parent, if applied
+		exit($SEVERE_ERROR_CODE);
+	}
+    # Check for top output dir
+	$avail_dkspace_output_dir = &get_available_disk_space($top_output_dir); # In blocks
+	if ($avail_dkspace_output_dir == -1) {
+		do clean_up(" ", 0);
+		kill 'USR1', getppid if $pid == 0;  # Send signal to parent, if applied
+		exit($SEVERE_ERROR_CODE);
+	}
+	$min_required_dkspace = &get_required_disk_space(); # In blocks
+
+###### DEBUG CODE
+#if (($test_c%2) == 0) {
+#$min_required_dkspace = 6000000;  # For debug
+##$avail_dkspace_output_dir = $min_required_dkspace + 100;
+#$avail_dkspace_4wking_dir = $min_required_dkspace + 100;
+#$test_c = 1;
+#}
+#else {$test_c += 1;
+#  }
+
+	local(@new_opts) = @opts;
+	local($outofspace) = $NONE_SYSTEM;
+	if ($min_required_dkspace > $avail_dkspace_4wking_dir &&
+		$min_required_dkspace > $avail_dkspace_output_dir) {
+		$outofspace = $WORKING_N_OUTPUT_FILE_SYSTEMS;
+	}
+	elsif ($min_required_dkspace > $avail_dkspace_4wking_dir) {
+		$outofspace = $WORKING_FILE_SYSTEM_ONLY;
+	}
+	elsif ($min_required_dkspace > $avail_dkspace_output_dir) {
+		$outofspace = $OUTPUT_FILE_SYSTEM_ONLY;
+	}
+	if ($outofspace != $NONE_SYSTEM) {
+        print STDERR "$this_prog: OUTOFSPACE.........\n";
+		@new_opts = do out_of_dkspace_handler(*infile, $outofspace, @opts);
+	}
+
+	return @new_opts;
+} #check_for_enough_disk_space
+
+sub get_required_disk_space {
+	# Return the minimum requirement of disk space (blocks) for running w/ the 
+	# next input file. 
+	# It is computed as followed (these values are approximations):
+	# The required # is expected to be larger than the actual size.
+	# Note: The size of HDF below is based on a single VOS file.
+    #
+	#          Actual file size (bytes)              Required size (bytes)
+	# ----------------------------------       ---------------------------
+	# 1C-51 MELBOURNE (921002.11.E.1.1159):         
+    #          HDF: 2394052                    double the actual sz: 4788104 
+    #           UF: 339105                     double the actual sz: 678210
+	# 1B-51 MELBOURNE (921002.11.E.1.1159):
+	#          HDF: 8002531                    double the actual sz: 16005062
+	#           UF: 1167634                    double the actual sz: 2335268
+	#
+	# 1C-51 Darwin (931223.07.D.1.0741) (Berrimah):
+	#          HDF: 12046132                   double the actual sz: 24092264 
+	#           UF: 716254                     double the actual sz: 1432508
+	# 1B-51 Darwin (Berrimah)
+	#          HDF: 15828175                   double the actual sz: 31656350
+	#           UF: 3345844                    double the actual sz: 6691688
+    #
+	# 1C-51 Darwin (971031.8.DARW.1.0739) (Gunn Point):
+	#          HDF: 20553131                   double the actual sz: 41106262
+	#           UF: 6227410                    double the actual sz: 12454820
+	#
+	# 1B-51 Darwin (Gunn Point)
+	#          HDF: 20545634                   double the actual sz: 41091268
+	#           UF: 9869985                    double the actual sz: 19739970
+	#
+	# 1C-51 KWAJ (960726.23.KWAJ.1.2227):
+	#          HDF: 10539805                   double the acutal sz: 21079610
+	#           UF: 370984                     double the acutal sz: 741968
+	# 1B-51 KWAJ (960726.23.KWAJ.1.2227):
+	#          HDF: 13826127                   double the acutal sz: 27652254
+	#           UF: 1030088                    double the acutal sz: 2060176
+	#
+
+
+	# Required sizes are in BLOCKs
+	local($min_required_dkspace) = 0;
+
+	local($min_1B_hdf_melb) = 16005;
+	local($min_1B_uf_melb)  = 2335;
+	local($min_1B_hdf_darw) = 31656; # Berrimah
+	$min_1B_hdf_darw        = 41091 if ($gunn_point);
+
+	local($min_1B_uf_darw)  = 6691; # Berrimah
+	$min_1B_uf_darw = 19739 if ($gunn_point);
+
+	local($min_1B_hdf_kwaj)   = 27652;
+	local($min_1B_uf_kwaj)    = 2060;
+
+	local($min_1C_hdf_melb) = 4788;
+	local($min_1C_uf_melb)  = 678;
+	local($min_1C_hdf_darw) = 24092;# Berrimah
+	$min_1C_hdf_darw = 41106 if ($gunn_point);
+
+	local($min_1C_uf_darw)  = 1432;   # Berrimah
+	$min_1C_uf_darw = 12454 if ($gunn_point);
+
+	local($min_1C_hdf_kwaj)   = 21079;
+	local($min_1C_uf_kwaj)    = 741;
+
+
+	# Melbourn and unknown
+	if ($site_name eq $melb || $site_name eq $unknown) {
+		$min_required_dkspace += $min_1C_hdf_melb if ($no_1C == 0);
+		$min_required_dkspace += $min_1B_hdf_melb if $no_1B == 0;
+		$min_required_dkspace += $min_1C_uf_melb if $dir_1C_UF ne "";
+	}
+	# Darwin
+	if ($site_name eq $darw) {
+		$min_required_dkspace += $min_1C_hdf_darw if ($no_1C == 0);
+		$min_required_dkspace += $min_1B_hdf_darw if $no_1B == 0;
+		$min_required_dkspace += $min_1C_uf_darw if $dir_1C_UF ne "";
+	}	
+	# Kwajalein
+	if ($site_name eq $kwaj) {
+		$min_required_dkspace += $min_1C_hdf_kwaj if ($no_1C == 0);
+		$min_required_dkspace += $min_1B_hdf_kwaj if $no_1B == 0;
+		$min_required_dkspace += $min_1C_uf_kwaj if $dir_1C_UF ne "";
+	}
+	$min_required_dkspace += 100 if ($gif_image_dir ne "");
+	local($overhead) = 400; 
+	return $min_required_dkspace + $overhead;
+}
+
+
+sub read_dir_from_file {
+	# Read dirs from dir file, select a dir from that list,
+	# write the unselected dirs to dir  tmp file, and return the selected
+	# dir.
+	local($dir_fname, $dir_tmp_fname) = @_;
+	local(@dirs_list);
+	local($dir) = "";
+
+	return $dir if ($dir_fname eq "" || !(-e $dir_fname));
+	open (DIRS, $dir_fname) || return $dir;
+	flock(DIRS, $LOCK_EX);  # lock file
+	@dirs_list = <DIRS>; 
+	flock(DIRS, $LOCK_UN);  # unlock file
+	close(DIRS);
+
+	# File(s) does not contain dir
+	if ($#dirs_list < -1) {
+		return "";
+	}
+
+	# Select the first dir from the dir list.
+	while (@dirs_list) {
+		local($tmp_str) = shift @dirs_list;
+		chop($tmp_str) if $tmp_str =~ /(\r)|(\n)/;
+		next if ($tmp_str eq "");   # blank line, skip
+		# Change top output dir
+		$dir = &change2absolute_dir2($save_curr_dir, $tmp_str);
+		last;
+	}
+
+	# Write the unselected dirs to a tmp file
+	do write_dirs_to_file($dir_tmp_fname, @dirs_list);
+
+	return $dir;
+}
+
+sub	write_dirs_to_file {
+	local($dir_fname, @dirs) = @_;
+	open(TMP_FILE, ">$dir_fname") ||
+		(print STDERR "$this_prog: Can't write dirs to file <$dir_fname>\n" && return);
+
+	flock(TMP_FILE, $LOCK_EX);  # lock file
+	local($i) = 0;
+	for ($i = 0; $i <= $#dirs; $i++) {
+		print TMP_FILE "$dirs[$i]";
+	}
+	flock(TMP_FILE, $LOCK_UN);  # unlock file
+	close(TMP_FILE);
+}
+
+sub out_of_dkspace_handler {
+	local(*infile, $outofspace_type, @options) = @_;
+	# Do one of the following:
+	# 
+	# 1. If no alternative dirs files for top output and working dir were
+	#    specified, Notify user of the next file to be processed and stop.
+	#
+	# 2. Use the alternatives dirs from the alter. output dirs and working dirs
+	#    files. Change options and set up the product(s) paths appropriately,
+	#    then return the new option list.
+	#    Move the ungranulized hdf files to the new output dir.
+	#    Modify the path name for infile appropriately if $infile
+	#    was moved to a new working dir, and data is not from CD.
+	#    Send signal 'USR1' to the parent process if use_child_process --so
+	#    the parent process can update it's top dirs and radar file's pathname.
+
+	local($rc) = 0;
+	local($alter_top_working_dir) = "";
+	local($alter_top_output_dir) = "";
+
+	if ($outofspace_type == $WORKING_FILE_SYSTEM_ONLY) {
+		print STDERR "$this_prog: Out of disk space for the current working dir <$top_working_dir>.\n";
+	
+		$rc = do get_alter_working_file_system(*alter_top_working_dir);
+		# Update old dirs
+		$old_top_working_dir = $top_working_dir;
+	}
+	elsif ($outofspace_type == $OUTPUT_FILE_SYSTEM_ONLY) {
+		print STDERR "$this_prog: Out of disk space for top output dir <$top_output_dir>.\n";
+		$rc = do get_alter_output_file_system(*alter_top_output_dir);
+		# Update old dirs
+		$old_top_output_dir = $top_output_dir;
+	}
+	elsif ($outofspace_type == $WORKING_N_OUTPUT_FILE_SYSTEMS) {
+		print STDERR "$this_prog: Out of disk space for the current working dir <$top_working_dir> and top output dir <$top_output_dir>.\n";
+		$rc = do get_alter_working_n_output_file_systems(*alter_top_working_dir, *alter_top_output_dir);
+		# Update old dirs
+		$old_top_working_dir = $top_working_dir;
+		$old_top_output_dir = $top_output_dir;
+	}
+	else {
+		return;
+	}
+	# Exit program if there is no alternative location to work from.
+	if ($rc < 0) {
+		do out_of_dkspace_exit();
+	}
+
+
+	local(@save_options) = @options;
+	@options = &setup_new_dirs_for_continuing_production($outofspace_type,
+														 $alter_top_output_dir,
+														 $alter_top_working_dir,
+														 @options);
+
+
+	# Move the non-compressed HDF files to the new destinations
+	# (since we are assuming that incomplete granule HDF file is not
+	# compresses)
+	do move_incomplete_granule_files_to_new_dests(@save_options);
+
+
+	print STDERR "$this_prog: Now current working dir and top output dir are: <$top_working_dir>, <$top_output_dir>.\n";
+
+
+	if (&use_child_process()) {
+		kill 'USR1', $ppid if $ppid > 0;    # Send signal to the parent process
+	}
+
+	return @options;
+}
+
+
+sub get_alter_working_file_system {
+	# Get alter working dir from file 
+	# Return 1 if successful, -1, otherwise.
+	local(*alter_top_working_dir) = @_;
+	if ($alter_working_dirs_fname eq "") {
+		print STDERR "$this_prog: alt_working_dirs_file <$alter_working_dirs_fname> is not specified.\n";
+		return -1;
+	}
+	$alter_top_working_dir = "";
+	if (&use_child_process()) {
+        # read alt dir from the saved files (temporary)
+		$alter_top_working_dir = 
+			&read_dir_from_file($alter_working_dirs_tmp_fname, $alter_working_dirs_tmp_fname);
+	}
+	else {
+		# Not using child process  -- so don't need to
+		# use a tmp file.
+		$alter_top_working_dir = shift @alter_top_working_dirs if $#alter_top_working_dirs >= 0;
+		
+	}
+
+	# Exit, there is no alternative dir for working from.
+	if ($alter_top_working_dir eq "") {
+		print STDERR "$this_prog: There is no altenative working dir.\n";
+		return -1;
+	}
+
+	# Check if the alter file system has enough space
+	local ($avail_dkspace_for_new_dir) = 
+		&get_available_disk_space($alter_top_working_dir); # In blocks
+	if ($min_required_dkspace > $avail_dkspace_for_new_dir) {
+		print STDERR "$this_prog: Alternative working file system <$alter_top_working_dir> doesnot have enough space.\n";
+
+		# Reset value
+		$avail_dkspace_4wking_dir = $avail_dkspace_for_new_dir;
+		return -1;
+	}
+	# Update old dirs
+	$old_top_working_dir = $top_working_dir;
+	return 1;
+
+} # get_alter_working_file_system 
+
+
+sub get_alter_output_file_system {
+	# Get alter top output dir from file
+	# Return 1 if successful, -1, otherwise.
+	local (*alter_top_output_dir) = @_;
+	if ($alter_top_output_dirs_fname eq "") {
+		print STDERR "$this_prog: alt_top_output_dirs_file <$alter_top_output_dirs_fname> is not specified.\n";
+		return -1;
+	}
+	$alter_top_output_dir = "";
+	if (&use_child_process()) {
+		# read alt dirs from the saved files (temporary)
+		$alter_top_output_dir = 
+			&read_dir_from_file($alter_top_output_dirs_tmp_fname, $alter_top_output_dirs_tmp_fname);
+	}
+	else {
+		# Not using child process  -- so don't need to
+		# use a tmp file.
+		$alter_top_output_dir = shift @alter_top_output_dirs if $#alter_top_output_dirs >= 0;
+	}
+
+	# Exit, there is no alternative dir 
+	
+	if ($alter_top_output_dir eq "") {
+		print STDERR "$this_prog: There is no altenative top output dir.\n";
+		return -1;
+	}
+
+	# Check if the alter file system has enough space
+	local ($avail_dkspace_for_new_dir) = 
+		&get_available_disk_space($alter_top_output_dir); # In blocks
+	if ($min_required_dkspace > $avail_dkspace_for_new_dir) {
+		print STDERR "$this_prog: Alternative top output file system <$alter_top_output_dir> doesnot have enough space.\n";
+
+		# Reset value
+		$avail_dkspace_output_dir = $avail_dkspace_for_new_dir;
+		return -1;
+	}
+
+	return 1;
+} #get_alter_output_file_system
+
+sub get_alter_working_n_output_file_systems {
+	# return 1 if succesful; -1 otherwise.
+	local(*alter_top_working_dir, *alter_top_output_dir) = @_;
+	local($rc) = 0;
+	$rc = do get_alter_working_file_system(*alter_top_working_dir);
+	return (-1) if ($rc < 0);
+
+	$rc = do get_alter_output_file_system(*alter_top_output_dir);
+	return (-1) if ($rc < 0);
+	return 1;
+}
+
+sub do_out_of_space_handler {
+	# Update  global variables that might have been modified by a child process
+	# in case out of disk space had occurred.
+	
+	$SIG{'USR1'} = 'do_out_of_space_handler';
+
+	do read_new_top_dirs_to_file($top_dirs_tmp_fname);
+	
+	# Read options from a file. Options are saved in a file since
+	# options could be altered by different child process.
+	@options = &read_options_from_file($options_tmp_fname);
+	
+	do extract_level1_dirs_from_options(*dir_1C, *dir_1B, *dir_1C_UF,
+										*gif_image_dir, *no_1C, 
+										*no_1B, @options);
+
+} # do_out_of_space_handler
+
+
+sub change_file_pathname {
+	local(*file, $old_pref, $new_pref) = @_;
+
+	# Replace the old pref with the new
+	# prefix
+	return if ($file eq "");
+	$file =~ s#^$old_pref#$new_pref#;
+}
+
+
+sub write_new_top_dirs_to_file {
+
+	local($fname, $top_output_dir, $top_working_dir, $top_tmp_dir, $old_top_working_dir) = @_;
+
+	local(@tmp_list) = ("$top_output_dir\n", "$top_working_dir\n", "$top_tmp_dir\n", "$old_top_working_dir\n");
+
+	do write_dirs_to_file($fname, @tmp_list);
+}
+
+
+sub read_new_top_dirs_to_file {
+	local($fname) = @_;
+	# Read $top_output_dir, $top_working_dir, $top_tmp_dir, $old_top_working_dir from file.
+	
+	return if ($fname eq "");
+	local(@dirs_list) = do read_dirs_from_file($fname, 1);
+#	local(@dirs_list) = split(' ', $tmp_list);
+	# dirs_list should contains: $top_output_dir, $top_working_dir, $top_tmp_dir
+
+	if ($#dirs_list < 3) {
+		print STDERR "$this_prog: $fname contains invalid format. Ignore. $#dirs_list <<@dirs_list>>\n" if ($verbose);
+	}
+	else {
+		$top_output_dir = shift @dirs_list;
+		chop $top_output_dir if $top_output_dir =~ /(\r)|(\n)/;
+
+		$top_working_dir = shift @dirs_list;
+		chop $top_working_dir  if $top_working_dir =~ /(\r)|(\n)/;
+
+		$top_tmp_dir =  shift @dirs_list;
+		chop $top_tmp_dir if $top_tmp_dir =~ /(\r)|(\n)/;
+
+		$old_top_working_dir = shift @dirs_list;
+		chop $old_top_working_dir if $old_top_working_dir =~ /(\r)|(\n)/;
+	}
+}
+
+
+sub setup_new_dirs_for_continuing_production {
+	local($outofspace_type, $alter_top_output_dir,
+		  $alter_top_working_dir,
+		  @options) = @_;
+	# Setup new top output dir and/or top working dir with the alter dirs.
+    # Change options and set up the product(s) paths appropriately.
+	# Return the new option list.
+
+	# Set new top output dir and working di. This file will be read by a child process.
+	# We use a tmp file instead of using a share memory segment.
+	$save_top_working_dir = $top_working_dir;
+	if ($outofspace_type == $WORKING_N_OUTPUT_FILE_SYSTEMS) {
+		return @options 
+			if ($alter_top_output_dir eq "" && $alter_top_working_dir eq "");
+		$top_output_dir = $alter_top_output_dir;
+		$top_working_dir = "$alter_top_working_dir$top_working_dir_suffix";
+		do do_system_call("mkdir -p $top_working_dir", "") 
+			if ($top_working_dir ne "" && !(-d $top_working_dir));
+
+	}
+	elsif ($outofspace_type == $OUTPUT_FILE_SYSTEM_ONLY) {
+		return @options if ($alter_top_output_dir eq "");
+		$top_output_dir = $alter_top_output_dir;
+	}
+
+	elsif ($outofspace_type == $WORKING_FILE_SYSTEM_ONLY) {
+		return @options if ($alter_top_working_dir eq "");
+		$top_working_dir = "$alter_top_working_dir$top_working_dir_suffix";
+		do do_system_call("mkdir -p $top_working_dir", "") 
+			if ($top_working_dir ne "" && !(-d $top_working_dir));
+
+	}
+	else {
+		return @options;
+	}
+
+
+	if (&use_child_process()) {
+		# Write new top output, tmp, working dirs and old_working_dir to a tmp file
+		do write_new_top_dirs_to_file($top_dirs_tmp_fname, $top_output_dir, $top_working_dir, $top_tmp_dir,
+									  $old_top_working_dir);
+	}
+
+	# 
+	# Change the option list to use the new top working dir and top output dir.
+	# Production can be continued. This needs to be called after the working
+	# and output dirs are set.
+	#
+	@options = do process_product_pathnames(@options);
+
+	chdir($top_working_dir) 
+		if ($outofspace_type == $WORKING_N_OUTPUT_FILE_SYSTEMS ||
+			$outofspace_type == $WORKING_FILE_SYSTEM_ONLY) ;    # Go to the new working dir.
+	
+	return @options;
+}
+
+
+sub move_incomplete_granule_files_to_new_dests {
+	local(@old_options) = @_;
+
+	local($options_str) = "@old_options";
+	local($old_dir_1C)  = $options_str =~ /.*\-c\s+(\S+).*$/;
+	local($old_dir_1B)  = $options_str =~ /.*\-b\s+(\S+).*$/;
+	
+
+	if ($old_dir_1C ne "" &&  $old_dir_1C ne $dir_1C) {
+		do do_system_call("mv $old_dir_1C/*HDF $dir_1C", "");
+	}
+	if ($old_dir_1B ne "" && $old_dir_1B ne $dir_1B) {
+		do do_system_call("mv $old_dir_1B/*HDF $dir_1B", "");
+	}
+
+}
+
+
+
+
+sub out_of_dkspace_exit {
+	# Can't continue -- there is not enough space.
+	# Send e-mail to user and exit.
+	print STDERR "$this_prog: There is not enough space to continue (Estimated required space for processing the next file: $min_required_dkspace; available working space: $avail_dkspace_4wking_dir; available space for output: $avail_dkspace_output_dir--Space is in blocks).\n Stop at <$infile>.\n";
+	
+	if ($send_email) {
+		# Notify user -- via e-mail
+		local($cmd) = "echo \"$this_prog: ERROR: Insufficient disk space (Estimated required space for processing the next file: $min_required_dkspace; working space: $avail_dkspace_4wking_dir; available space for output: $avail_dkspace_output_dir--Space is in blocks).\n\nYou may resume the production by running this program again using the following information: \n\tStart file:  $infile\n\tProgram ran with arguments:  @save_prog_cmd\n\"|mail -s \"Status for $this_prog\" $ENV{'USER'}";
+		
+		do do_system_call($cmd, "");
+	}
+	do clean_up("", 0);
+	do send_job_status($prog, $jobnum, $infile, "aborted");
+	exit($OUT_OF_SPACE_CODE);
+}
+
+
+sub process_prog {
+	local($jobnum, *full_filename,
+		  @options) = @_;
+
+	# Returns new options list.
+	if ($tape_file_type eq $UNTARRED_FILE) {
+		@options = do run_program($program, $jobnum, *full_filename, @options);
+	}
+	elsif ($tape_file_type eq $TARRED_FILE) {
+		# Darwin data files from tape are compressed and tarred.
+		# Files are untarred in the tmp directory. Note: processed files
+		# have been removed from this dir when doing untarring file.
+		opendir(THISDIR, $untarred_files_dir);
+		# only want non . files
+		local(@zipped_file_list) = grep(!/^\./, readdir(THISDIR));
+		closedir(THISDIR);
+		# Sort file list
+		@zipped_file_list = sort @zipped_file_list;
+		while (@zipped_file_list) {
+			$tmpfile = shift @zipped_file_list;
+			$infile = $untarred_files_dir.$tmpfile;
+			chop $infile if ($infile =~ /(\r)|(\n)/); 
+			@options = do run_program($program, $jobnum, *infile, @options); 
+			do do_system_call ("rm -f $infile", "") 
+				if $remove_tape_raw_data_from_disk;
+			$save_jobnum = $jobnum;
+			$jobnum++;
+		}
+		do do_system_call("rm -fr $untarred_files_dir", "")
+			if $remove_tape_raw_data_from_disk;
+	}
+	return @options;
+}
+
+sub is_tape {
+	local($dev) = @_;
+	# dev is tape if it's neither disk nor cdrom
+	return 1 if ($dev ne $disk && $dev ne $cd);
+	return 0;
+}
+
+sub is_cd {
+	local($dev) = @_;
+	return 1 if ($dev eq $cd);
+	return 0;
+}
+
+
+sub is_disk {
+	local($dev) = @_;
+	return 1 if ($dev eq $disk);
+	return 0;
+}
+
+sub is_darw_tape {
+	local($tape_header_str) = @_;
+	# $tape_header_str is a string of words read from the header file 
+	# (first 44 bytes).
+	# Returns 1 if the string contains "Darwin"
+	# Returns 0 otherwise.
+	#
+	return 1 if ($tape_header_str =~ /Darwin/);
+	return 0;
+
+}
+
+sub is_darb_tape {
+	local($first_file_top_bytes_str) = @_;
+	# $first_file_top_bytes_str is a string of words read from the first file 
+	# (first 44 bytes).  The first file is the data file (tar'ed file)
+    # Berrimah's 
+	# Returns 1 if the string contains either ".vol" or "Berrimah" -- 
+    # volume's filename extention. Returns 0 otherwise.
+	#
+
+	return 1 if ($first_file_top_bytes_str =~ /\.vol/);
+	return 1 if ($first_file_top_bytes_str =~ /Berrimah/);
+	return 0;
+
+}
+
+sub is_nexrad_tape {
+	local($tape_header_str) = @_;
+	# $tape_header_str is a string of words read from the header file 
+	# (first 44 bytes).
+	# Returns 1 if the string contains "ARCHIVE2"
+	# Returns 0 otherwise.
+	#
+
+	return 1 if ($tape_header_str =~ /ARCHIVE2/);
+	return 0;
+}
+
+sub is_melb_tape {
+	local($tape_header_str) = @_;
+	# Return 1 if it's a nexrad tape and 'KMLB' exists in the header str;
+	# 0, otherwise.
+	#
+
+	return 0 if (&is_nexrad_tape($tape_header_str) == 0); # Non-Nexrad
+
+	# Check if 4-uppercase-char 
+	# sitename exists at the 9th position in the header file.
+	local(@tmp_str) = split(/ /, $tape_type_str); # split into strings
+	local(@header_info) = split(//,$tmp_str[0]);  # split into chars
+	local($invalid_sitename) = 0;
+	local($i) = 8;
+	local($c1) = $header_info[$i++];
+	local($c2) = $header_info[$i++];
+	local($c3) = $header_info[$i++];
+	local($c4) = $header_info[$i++];
+
+	return 1 if ("KMLB" eq "$c1$c2$c3$c4");
+	return 0;
+
+}
+
+sub is_kwaj_tape {
+	local($tape_header_str) = @_;
+	# $tape_header_str is a string of words read from the header file 
+	# (first 44 bytes).
+	# Returns 1 if the string contains "KWAJ"
+	# Returns 0 otherwise.
+	#
+	return 1 if ($tape_header_str =~ /KWAJ/);
+	return 0;
+}
+
+sub is_uf_tape {
+	local($fname, *radar_name) = @_;
+	# Returns 1 if the file contains a string, "UF" near the top.
+	# Returns 0 otherwise.
+	#
+	open(THIS_FILE, "zcat $fname| head -1|") ||     # Zipped file
+		open(THIS_FILE, "cat $fname| head -1|") ||  # Non-zipped file
+			return 0;
+	local($str) = <THIS_FILE>;
+	close(THIS_FILE);
+	if ($str =~ /UF/) {
+		local($i) = 24;
+		local(@strs) = split(//, $str);
+		$radar_name = "$strs[$i++]$strs[$i++]$strs[$i++]$strs[$i++]";
+		return 1;
+	}
+	return 0;
+}
+
+sub doexit_handler {
+	# This routine is called when interrupt signal occurred.
+	# Note: This routine doesnot kill child processes directly since the 
+	# interrupt signal was not received by this process but by a child
+	# process when a child process 
+	# was running. Therefore, when a child process receives the interrupt 
+	# signal, it does cleanup and exit.
+	
+	local($signal) = @_;
+
+	do ignore_catched_signals();
+
+	# Restore STDERR and STDOUT.  This is required since both stderr and stdout
+    # might have been redirected by the calling program, all_tape_level_1n2.
+	do restore_tty();
+
+	$| = 1;
+	local($exit_code) = $SEVERE_ERROR_CODE;
+	if ($signal eq 'USR1') {  # Out of space.
+		$exit_code = $OUT_OF_SPACE_CODE;
+	}
+
+	$exit_code = $INTER_CODE 
+		if ($signal eq 'INT' || $signal eq 'KILL' || $signal eq 'STOP');
+
+	if ($pid > 0 || $pid == -1) {
+		#parent
+		kill $signal, $pid if ($pid > 0);   # Send signal to child if applied
+		setpgrp();     # Set process group.
+		# Kill all related process(es)
+		if ($signal eq 'USR1') {
+			kill ('STOP', 0);
+		}
+		else {
+			kill $signal, 0;    # Kill process group.
+		}
+
+		while (wait != -1) {;} # wait
+
+		print STDERR "$this_prog: Got signal <$signal>. Abort execution. Time = ".time."\n" if ($verbose);
+		if ($save_infile ne "") {
+			system("$send_status_prog -e $save_jobnum $tape_id $device $save_program $save_infile $stat_array[$rc]");
+			do set_products_status(*products_status, $stat_array[$rc], @active_prod) if ($save_program eq $active_prod[0]);
+		}
+		$save_jobnum += 1;
+		system("$send_status_prog -e $save_jobnum $tape_id $device $save_program NOFILE $FINISHED_STR");
+		do set_products_status(*products_status, $FINISHED_STR, @active_prod) if ($save_program eq $active_prod[0]);
+		if ($first_time_exit_handler) {
+			$first_time_exit_handler = 0;
+
+			do clean_up("", 0);
+		}
+	}
+	else {
+		print STDERR "$this_prog: Got signal <$signal>. Abort execution.\n" if ($verbose);
+		kill $signal, getppid if $pid == 0;  # Send signal to parent
+	}
+
+	exit($exit_code);
+}
+
+
+
+sub update_inventory_info_list {
+	local($file_or_dir_name, $file_or_dir) = @_;
+
+	# Update start/end date/time and nfiles for this tape.
+    # $file_or_dir: 1== file; 2== dir
+	# Read date/time from raw file.
+
+	local(@file_list) = ();
+	if ($file_or_dir == 1) {
+		# File
+		do get_info_from_fileNupdate_info_list($file_or_dir_name);
+	}
+	elsif ($file_or_dir == 2) {
+		# Dir
+		opendir(THISDIR, $file_or_dir) || return;
+		# only want non . files
+		@file_list = grep(!/^\./, readdir(THISDIR));
+		closedir(THISDIR);
+		# Sort file list
+		@file_list = sort @file_list;
+        while ($#file_list >= 0 ) {
+print STDERR "file_list count: $#file_list\n" if ($verbose);
+			local($fname) = shift @file_list;
+
+            do get_info_from_fileNupdate_info_list($fname);
+
+		} # while (@file_list)
+	} #else
+
+} # update_inventory_info_list 
+
+
+sub get_info_from_fileNupdate_info_list {
+	local($fname) = @_;
+
+	local($cmd) = "get_info_from_file -n -e $firstfile_option NON_HDF $fname |";
+
+	local($file_time) = 0;
+	local($radar_name) = "";
+	print STDERR "Executing <$cmd>...\n" if ($verbose);
+	open(INFO, $cmd) || (print STDERR "Failed execute <$cmd>.\n" && return);
+	local(@info_list) = <INFO>;
+	close(INFO);
+
+	local($mon,$day,$yr,$hr,$min,$sec) = -1;
+	while (@info_list) {
+		local($info_entry) = shift @info_list;
+		local($tmp_s) = "";
+		if ($info_entry =~ /^Radar Name:\s+\w+/) {
+			($radar_name) = $info_entry =~ /^Radar Name:\s+(\w+)/;
+		}
+		elsif ($info_entry =~ /End Date Time:\s+\d+\/\d+\/\d+\s+\d+:\d+:.+/) {
+			($mon,$day,$yr,$hr,$min,$sec) = 
+				$info_entry =~ /End Date Time:\s+(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+):(.+)/;
+		}
+	}
+
+	return if ($sec == -1 || $min == -1 || $hr == -1 ||
+			   $mon == -1 ||  $day == -1 || $yr == -1);
+	$sec = 0 if ($sec < 0 || $sec > 59);
+	$min = 0 if ($min < 0 || $min > 59);
+	$file_time = &date_time2seconds($hr, $min, $sec, $mon, $day, $yr);
+	
+	# Update tape start/end time if appropriate
+	$inventory_info{"tape_start_time"} = $file_time 
+		if ($inventory_info{"tape_start_time"} > $file_time || 
+			$inventory_info{"tape_start_time"} < 0);
+	$inventory_info{"tape_end_time"} = $file_time 
+		if ($inventory_info{"tape_end_time"} < $file_time ||
+			$inventory_info{"tape_end_time"} < 0);
+	if ($inventory_info{"site_acronym"} ne $radar_name) {
+		$inventory_info{"site_acronym"} = $radar_name;
+		$inventory_info{"site_name"}    = $radar_name;
+		
+	}
+	$inventory_info{"tape_nfiles"} ++;
+
+}
+
+
+sub update_gvi_db {
+	# Send inventory info to the database, gvi_db.
+
+	do send_tape_msg_to_gvics($inventory_info{'tape_id'}, 
+							  $inventory_info{'tape_start_time'},
+							  $inventory_info{'tape_end_time'},
+							  $inventory_info{'tape_nfiles'},
+							  $inventory_info{'tape_device'},
+							  $inventory_info{'tape_location'},
+							  $inventory_info{'site_name'});
+	do send_site_msg_to_gvics($inventory_info{'site_name'},
+							  $inventory_info{'site_acronym'},
+							  $inventory_info{'site_data_type'});
+
+
+	# Send info of each file for all products to GV inventory DB.
+
+	local($save_options) = join(' ', @options);
+    local(%prod_options_list) = ('level_1', $save_options);
+
+	do send_product_info_to_inventory($tape_id, *active_prod, *prod_options_list,
+							  $prod_processed_num, *products_status,
+							  $dir_1C) if ($dir_1C ne "");
+	do send_product_info_to_inventory($tape_id, *active_prod, *prod_options_list,
+							  $prod_processed_num, *products_status,
+							  $dir_1B) if ($dir_1B ne "");
+	do send_product_info_to_inventory($tape_id, *active_prod, *prod_options_list,
+							  $prod_processed_num, *products_status,
+							  $dir_1C_UF) if ($dir_1C_UF ne "");
+
+} # update_gvi_db 

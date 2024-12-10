@@ -1,0 +1,126 @@
+<HTML>
+<HEAD>
+   <META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=iso-8859-1">
+   <META NAME="GENERATOR" CONTENT="Mozilla/4.04 [en] (X11; I; Linux 2.0.28 i686) [Netscape]">
+</HEAD>
+<BODY BACKGROUND="gvs_production_bg.gif">
+&nbsp;
+<CENTER><TABLE BORDER=2 CELLPADDING=0 WIDTH="100%" >
+<TR ALIGN=CENTER VALIGN=CENTER>
+<TD><IMG SRC="gvs_production_logo.gif" HEIGHT=100 WIDTH=256 ALIGN=LEFT></TD>
+
+<TD ALIGN=CENTER VALIGN=CENTER>
+<H1>
+<FONT COLOR="#000080">monthly_2A-52:</FONT> <FONT COLOR="#800080">Process
+Rain Existence for Monthly Data Set</FONT></H1>
+</TD>
+</TR>
+</TABLE></CENTER>
+
+<HR WIDTH="100%">
+<BR><B>Last updated:</B> 8/17/98&nbsp;
+<HR><FONT COLOR="#000080">Synopsis</FONT>
+<PRE><B><TT><FONT COLOR="#B22222">monthly_2A-52 [-v] [-o <I>output_dir</I>] [-w <I>working_dir</I>]&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-V <I>TSDIS_prod_version#</I>] [-p <I>2A-53-product</I>]&nbsp;
+</FONT></TT><FONT COLOR="#B22222">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; [-versions_file filename] [-not_report_monitorps]
+<TT>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; top_input_dir tapeid program prog_options</TT></FONT></B></PRE>
+
+<PRE><B><TT><FONT COLOR="#000000">where,</FONT></TT></B></PRE>
+
+<PRE><B><TT><FONT COLOR="#000000">See <A HREF="#Options">options.</A></FONT></TT></B></PRE>
+
+<PRE><B><TT><FONT COLOR="#000000">top_input_dir : Directory where the daily data sets are located under.&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; See <I>Input Files</I> section below.
+tapeid&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : Tape ID of the monthly data set.
+program&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; : <A HREF="../../gvs/src/2A-52i/2A-52i.html">2A-52i</A> (Rain existence program).
+prog_options&nbsp; : Options for program.</FONT></TT></B></PRE>
+
+<HR>
+<H3>
+<FONT COLOR="#000080">Description</FONT></H3>
+This program will call 2A-52i multiple times to produce a monthly rain
+existence or <A HREF="../../gvs/src/2A-52i/2A-52i.html">2A-52</A> product
+for one site.
+
+<P>
+<HR>
+<H3>
+<FONT COLOR="#000080">Input Files</FONT></H3>
+
+<OL>
+<LI>
+A month worth of rain rate granules in HDF format located under top_input_dir
+that has the following hierarchial structure:</LI>
+
+<PRE>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | <I><TT>daily_1</TT></I> --> gvs_2A-53-{c|d|w|v4}_<I><TT>tapeid</TT></I> --> HDF file(s)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; top_input_dir --> | <I><TT>daily_2</TT></I> --> gvs_2A-53-{c|d|w|v4}_<I><TT>tapeid</TT></I> --> HDF file(s)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ...
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; | <I><TT>daily_N</TT></I> --> gvs_2A-53-{c|d|w|v4}_<I><TT>tapeid</TT></I> --> HDF file(s)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; HDF file(s) must follow TSDIS file naming convention and may
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; be compressed. The file format is as followed: 2A53.c.n.r.v.HDF[.gz|.Z];&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; see file's legend listed in Output File section.</PRE>
+</OL>
+
+<HR>
+<H3>
+<FONT COLOR="#000080">Temporary File</FONT></H3>
+$working_dir/re_&lt;pid>.ASCII.
+
+<P>
+<HR width="100%">
+<H3>
+<FONT COLOR="#000080">Output File</FONT></H3>
+2A52.c.r.v - Ascii file containing rain existence data of one site for
+one month. The entries are sorted based on time of VOSs. The output filename
+will be constructed by this program.
+<PRE>&nbsp;&nbsp; legend:
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; c = yymmdd (date of the first day in this monthly collection)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; n = granule #
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; r = GV radar or site designation
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; v = version number of TSDIS product</PRE>
+
+<PRE>
+<HR></PRE>
+
+<H3>
+<A NAME="Options"></A><FONT COLOR="#000080">Options</FONT></H3>
+<B><FONT COLOR="#B22222">monthly_2A-52</FONT></B> recognizes the following
+options:
+
+<P><B><FONT COLOR="#B22222">-v</FONT>:</B> Output steps of program execution.
+
+<P><B><FONT COLOR="#B22222">-o: </FONT></B>Specify output directory. Default:
+'./'.
+
+<P><B><FONT COLOR="#B22222">-w</FONT></B>: Specify working directory. Default:
+'./'.
+
+<P><B><FONT COLOR="#B22222">-V</FONT></B>: Specify TSDIS' product version
+number. Default: 1.
+
+<P><B><FONT COLOR="#B22222">-p</FONT></B>: Specify rain rate product to
+be used as input. Available values: 2A-53-{c|d|w|v4}. Default: 2A-53-v4.
+
+<P><B><FONT COLOR="#993300">-versions_file</FONT></B>: Specify filename
+that contains TSDIS products'&nbsp; version numbers. Default = $GVS_DATA_PATH/products_version_numbers.&nbsp;
+See the default file for format when creating this file.
+
+<P><B><FONT COLOR="#B22222">-not_report_monitorps</FONT></B>: Do not send
+status messages to monitorps.
+<BR>&nbsp;
+<BR>
+<HR>
+<H3>
+<FONT COLOR="#000080">Return value</FONT></H3>
+<B><FONT COLOR="#B22222">monthly_2A-52</FONT></B> returns zero for successful
+completion; -1 for failure; and -2 for interruption.
+
+<P>
+<HR>
+<H3>
+<FONT COLOR="#000080">Author</FONT></H3>
+Ngoc-Thuy Nguyen, Science Systems and Applications, Inc. (SSAI), <I><TT>NASA/GSFC/TRMM
+Office</TT></I>
+</BODY>
+</HTML>
